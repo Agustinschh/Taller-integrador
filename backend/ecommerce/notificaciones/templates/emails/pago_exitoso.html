@@ -1,0 +1,62 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<h2>✅ ¡Pago confirmado exitosamente!</h2>
+
+<p>Hola <strong>{{ usuario.get_full_name|default:usuario.email }}</strong>,</p>
+
+<p>¡Excelente! Hemos confirmado tu pago para la orden <strong>#{{ orden.id }}</strong>.</p>
+
+<div class="info-box">
+    <p><strong>💳 Detalles del pago:</strong></p>
+    <p>Número de orden: <strong>#{{ orden.id }}</strong></p>
+    <p>Monto pagado: <strong>${{ pago.monto|floatformat:2 }} ARS</strong></p>
+    <p>Método de pago: <strong>{{ pago.get_metodo_display }}</strong></p>
+    <p>Fecha de pago: {{ pago.fecha_creacion|date:"d/m/Y H:i" }}</p>
+    {% if pago.transaccion_id %}
+    <p>ID de transacción: <strong>{{ pago.transaccion_id }}</strong></p>
+    {% endif %}
+</div>
+
+<h3>📋 Resumen de tu orden:</h3>
+<div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+    {% for item in orden.orden_productos.all %}
+    <div style="border-bottom: 1px solid #e0e0e0; padding: 10px 0;">
+        <p><strong>{{ item.producto.nombre }}</strong></p>
+        <p>Cantidad: {{ item.cantidad }} | Precio: ${{ item.precio_unitario|floatformat:2 }} ARS</p>
+    </div>
+    {% endfor %}
+    <div style="padding-top: 15px; border-top: 2px solid #283655; margin-top: 15px;">
+        <p><strong>Total pagado: ${{ orden.total|floatformat:2 }} ARS</strong></p>
+    </div>
+</div>
+
+<h3>🚀 ¿Qué sigue ahora?</h3>
+<div style="background-color: #e8f4fd; padding: 20px; border-radius: 5px; margin: 20px 0;">
+    <p>✅ <strong>Pago confirmado</strong> - ¡Listo!</p>
+    <p>📦 <strong>Preparando tu orden</strong> - En las próximas 24 horas</p>
+    <p>🚚 <strong>Envío seguro</strong> - Te notificaremos con el código de seguimiento</p>
+    <p>📬 <strong>Entrega en 2-5 días</strong> - Directamente en tu dirección o sucursal seleccionada</p>
+</div>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ site_url }}/ordenes/{{ orden.id }}" class="button">
+        📋 Ver Estado de mi Orden
+    </a>
+</div>
+
+<h3>📧 Próximas notificaciones:</h3>
+<p>Te mantendremos informado/a en cada paso:</p>
+<ul style="margin: 20px 0; padding-left: 20px;">
+    <li>📦 Cuando tu orden sea empaquetada y enviada</li>
+    <li>📍 Información de seguimiento de Correo Argentino</li>
+    <li>🏠 Confirmación de entrega</li>
+</ul>
+
+<p>Si necesitas ayuda o tienes alguna pregunta, nuestro equipo está disponible para asistirte.</p>
+
+<p>¡Gracias por tu confianza en Bloque Mundo!</p>
+
+<p>Saludos cordiales,<br>
+<strong>El equipo de Bloque Mundo</strong></p>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<h2>¡Bienvenido/a a Bloque Mundo! 🎉</h2>
+
+<p>Hola <strong>{{ usuario.get_full_name|default:usuario.email }}</strong>,</p>
+
+<p>¡Gracias por registrarte en Bloque Mundo! Estamos emocionados de tenerte como parte de nuestra comunidad de constructores y coleccionistas.</p>
+
+<div class="info-box">
+    <p><strong>🔐 Tu cuenta ha sido creada exitosamente</strong></p>
+    <p>Email: {{ usuario.email }}</p>
+    <p>Fecha de registro: {{ usuario.date_joined|date:"d/m/Y H:i" }}</p>
+</div>
+
+<p>En Bloque Mundo encontrarás:</p>
+<ul style="margin: 20px 0; padding-left: 20px;">
+    <li>✨ Sets oficiales y piezas exclusivas</li>
+    <li>🚚 Envíos a todo el país con Correo Argentino</li>
+    <li>🔒 Pagos 100% seguros con Mercado Pago</li>
+    <li>💝 Ofertas y combos exclusivos</li>
+    <li>🎯 Atención personalizada</li>
+</ul>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ site_url }}" class="button">
+        🛍️ Explorar Catálogo
+    </a>
+</div>
+
+<p>Si tienes alguna pregunta o necesitas ayuda con tu pedido, no dudes en contactarnos.</p>
+
+<p>¡Disfruta construyendo!</p>
+
+<p>Saludos cordiales,<br>
+<strong>El equipo de Bloque Mundo</strong></p>
+{% endblock %}

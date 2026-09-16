@@ -1,0 +1,236 @@
+
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Filter, Grid3X3, List, ShoppingCart } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import ProductCard from '../components/ProductCard';
+import API_BASE_URL from '../../config';
+
+const Categorias = () => {
+  const { categoriaNombre } = useParams();
+  const navigate = useNavigate();
+  const [productos, setProductos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sortBy, setSortBy] = useState('nombre');
+  const [viewMode, setViewMode] = useState('grid');
+  const [totalProducts, setTotalProducts] = useState(0);
+
+
+
+
+    const categoryMapping = {
+      'star-wars': 'Star Wars',
+      'star-wars™': 'Star Wars',
+      'technic': 'Technic',
+      'harry-potter': 'Harry Potter',
+      'harry-potter™': 'Harry Potter',
+      'novedades': 'Novedades',
+      'ofertas': 'Ofertas'
+    };
+
+    const categoryName = categoryMapping[categoriaNombre?.toLowerCase()] || categoriaNombre;
+
+  useEffect(() => {
+    if (categoriaNombre?.toLowerCase() === 'ofertas') {
+      navigate('/TodasOfertas');
+      return;
+    }
+    fetchProductsByCategory();
+  }, [categoryName, sortBy]);
+
+  const fetchProductsByCategory = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      let url = `${API_BASE_URL}/productos/`;
+      if (categoriaNombre?.toLowerCase() === 'novedades') {
+        url += '?ordering=-creado';
+      } else {
+        url += `?categorias__nombre=${encodeURIComponent(categoryName)}`;
+      }
+
+      if (sortBy === 'precio_asc') {
+        url += `${url.includes('?') ? '&' : '?'}ordering=precio`;
+      } else if (sortBy === 'precio_desc') {
+        url += `${url.includes('?') ? '&' : '?'}ordering=-precio`;
+      } else if (sortBy === 'nombre') {
+        url += `${url.includes('?') ? '&' : '?'}ordering=nombre`;
+      } else if (sortBy === 'fecha') {
+        url += `${url.includes('?') ? '&' : '?'}ordering=-creado`;
+      }
+
+      const response = await fetch(url);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProductos(data);
+        setTotalProducts(data.length);
+      } else {
+        throw new Error(`Error ${response.status}: No se pudieron cargar los productos`);
+      }
+    } catch (error) {
+      setError(error.message);
+      setProductos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSortChange = (newSort) => {
+    setSortBy(newSort);
+  };
+
+  const handleBackClick = () => {
+    navigate(-1);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#ffffff' }}>
+        <div className="display text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mx-auto mb-4"></div>
+          <p style={{ color: '#283655' }}>Cargando productos de {categoryName}...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#1E1F26' }}>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4" style={{ color: '#D0E1F9' }}>Error al cargar productos</h2>
+          <p className="mb-6" style={{ color: '#4D648D' }}>{error}</p>
+          <Button onClick={() => navigate('/')} style={{ backgroundColor: '#283655', color: '#D0E1F9' }}>
+            Volver al inicio
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: '#ffffff' }}>
+      <div className="max-w-xl mx-auto xl:max-w-7xl px-4 py-8">
+
+  <div className="mb-8">
+
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="display text-3xl font-bold mb-2" style={{ color: '#1E1F26' }}>
+                {categoryName}
+              </h1>
+              <p style={{ color: '#4D648D' }}>
+                {totalProducts === 0 
+                  ? 'No hay productos disponibles en esta categoría' 
+                  : `${totalProducts} ${totalProducts === 1 ? 'producto encontrado' : 'productos encontrados'}`
+                }
+              </p>
+            </div>
+
+
+            {productos.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4" style={{ color: '#4D648D' }} />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => handleSortChange(e.target.value)}
+                    className="border rounded-md px-3 py-2 text-sm"
+                    style={{ borderColor: '#283655', color: '#283655', backgroundColor: '#D0E1F9' }}
+                  >
+                    <option value="nombre">Nombre A-Z</option>
+                    <option value="precio_asc">Precio: Menor a Mayor</option>
+                    <option value="precio_desc">Precio: Mayor a Menor</option>
+                    <option value="fecha">Más Recientes</option>
+                  </select>
+                </div>
+
+ 
+                <div className="inline-flex rounded-md border" style={{ borderColor: '#283655' }}>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`px-3 py-2 text-sm font-medium rounded-l-md border-r ${
+                      viewMode === 'grid' 
+                        ? 'text-white' 
+                        : 'hover:bg-blueberry'
+                    }`}
+                    style={{ 
+                      backgroundColor: viewMode === 'grid' ? '#283655' : 'transparent',
+                      color: viewMode === 'grid' ? '#D0E1F9' : '#283655',
+                      borderRightColor: '#283655'
+                    }}
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-3 py-2 text-sm font-medium rounded-r-md ${
+                      viewMode === 'list' 
+                        ? 'text-white' 
+                        : 'hover:bg-blueberry'
+                    }`}
+                    style={{ 
+                      backgroundColor: viewMode === 'list' ? '#283655' : 'transparent',
+                      color: viewMode === 'list' ? '#D0E1F9' : '#283655'
+                    }}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>         
+        </div>
+
+
+        {productos.length === 0 ? (
+          <div className="text-center py-16">
+            <ShoppingCart className="h-24 w-24 mx-auto mb-6" style={{ color: '#4D648D' }} />
+            <h2 className="display text-2xl font-semibold mb-4" style={{ color: '#1E1F26' }}>
+              No hay productos en esta categoría
+            </h2>
+            <p className="display mb-8 max-w-md mx-auto" style={{ color: '#4D648D' }}>
+              Lo sentimos, actualmente no tenemos productos disponibles en la categoría "{categoryName}".
+              Te invitamos a explorar nuestras otras categorías.
+            </p>
+            <Button
+              onClick={() => navigate('/')}
+              className="display px-8 py-3"
+              style={{ backgroundColor: '#283655', color: '#D0E1F9' }}
+            >
+              Explorar Todas las Categorías
+            </Button>
+          </div>
+        ) : (
+
+          <div className={
+            viewMode === 'grid' 
+              ? 'grid grid-cols-1 xl:grid-cols-4 gap-6'
+              : 'grid grid-cols-1 xl:grid-cols-2 gap-6'
+          }>
+            {productos.map((producto) => (
+              <ProductCard key={producto.id} product={producto} />
+            ))}
+          </div>
+        )}
+      </div>
+      
+      <div className="pb-12">
+        <Button
+          variant="ghost"
+          onClick={handleBackClick}
+          className="flex items-center gap-2 px- py-2 ml-4 "
+          style={{ color: '#D0E1F9', backgroundColor: '#283655' }}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+export default Categorias;

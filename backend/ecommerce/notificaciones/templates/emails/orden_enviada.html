@@ -1,0 +1,75 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<h2>🚚 ¡Tu orden está en camino!</h2>
+
+<p>Hola <strong>{{ usuario.get_full_name|default:usuario.email }}</strong>,</p>
+
+<p>¡Excelente noticia! Tu orden <strong>#{{ orden.id }}</strong> ha sido enviada y está en camino hacia ti.</p>
+
+<div class="info-box">
+    <p><strong>📦 Información de envío:</strong></p>
+    <p>Número de orden: <strong>#{{ orden.id }}</strong></p>
+    <p>Fecha de envío: {{ orden.fecha_envio|date:"d/m/Y H:i" }}</p>
+    {% if tracking_number %}
+    <p>Número de seguimiento: <strong>{{ tracking_number }}</strong></p>
+    {% endif %}
+    {% if courier %}
+    <p>Empresa de envío: <strong>{{ courier }}</strong></p>
+    {% endif %}
+</div>
+
+<h3>📍 Dirección de entrega:</h3>
+<div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+    {% if orden.direccion_envio %}
+    <p><strong>{{ orden.direccion_envio }}</strong></p>
+    {% endif %}
+    {% if orden.ciudad %}
+    <p>{{ orden.ciudad }}</p>
+    {% endif %}
+    {% if orden.telefono %}
+    <p>📞 {{ orden.telefono }}</p>
+    {% endif %}
+</div>
+
+<h3>⏰ Tiempo estimado de entrega:</h3>
+<p>📅 <strong>2-5 días hábiles</strong> desde la fecha de envío</p>
+<p>🕐 Entregas de Lunes a Viernes, 9:00 AM - 6:00 PM</p>
+
+{% if tracking_number %}
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ tracking_url }}" class="button">
+        📍 Rastrear mi Paquete
+    </a>
+</div>
+{% endif %}
+
+<div style="background-color: #e8f4fd; padding: 20px; border-radius: 5px; margin: 20px 0;">
+    <p><strong>📦 Embalaje y Cuidado Garantizado</strong></p>
+    <p>• Paquete protegido y embalado cuidadosamente para cuidar las cajas y piezas</p>
+    <p>• Envío asegurado a través de Correo Argentino</p>
+</div>
+
+<h3>📋 Recordatorio importante:</h3>
+<ul style="margin: 20px 0; padding-left: 20px;">
+    <li>🏠 Asegúrate de estar disponible en la dirección de entrega</li>
+    <li>📱 Mantén tu teléfono disponible por si el repartidor necesita contactarte</li>
+    <li>🆔 Ten tu documento listo para recibir el paquete</li>
+    <li>📦 Revisa el paquete al momento de la entrega</li>
+</ul>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ site_url }}/ordenes/{{ orden.id }}" class="button">
+        📋 Ver Detalles de la Orden
+    </a>
+</div>
+
+<p>Una vez que recibas tu paquete, te enviaremos una confirmación de entrega.</p>
+
+<p>Si tienes alguna pregunta o inquietud sobre tu envío, no dudes en contactarnos.</p>
+
+<p>¡Gracias por tu compra!</p>
+
+<p>Saludos cordiales,<br>
+<strong>El equipo de Bloque Mundo</strong></p>
+{% endblock %}

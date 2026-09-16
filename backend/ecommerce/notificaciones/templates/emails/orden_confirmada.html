@@ -1,0 +1,59 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<h2>🎉 ¡Tu orden ha sido confirmada!</h2>
+
+<p>Hola <strong>{{ usuario.get_full_name|default:usuario.email }}</strong>,</p>
+
+<p>¡Excelente noticia! Tu orden <strong>#{{ orden.id }}</strong> ha sido confirmada y está siendo procesada.</p>
+
+<div class="info-box">
+    <p><strong>📋 Detalles de tu orden:</strong></p>
+    <p>Número de orden: <strong>#{{ orden.id }}</strong></p>
+    <p>Fecha: {{ orden.fecha_creacion|date:"d/m/Y H:i" }}</p>
+    <p>Total: <strong>${{ orden.total|floatformat:2 }} ARS</strong></p>
+    <p>Estado: <strong>{{ orden.get_estado_display }}</strong></p>
+</div>
+
+<h3>📦 Productos ordenados:</h3>
+<div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+    {% for item in orden.orden_productos.all %}
+    <div style="border-bottom: 1px solid #e0e0e0; padding: 10px 0;">
+        <p><strong>{{ item.producto.nombre }}</strong></p>
+        <p>Cantidad: {{ item.cantidad }} | Precio: ${{ item.precio_unitario|floatformat:2 }} ARS</p>
+        <p>Subtotal: <strong>${{ item.subtotal|floatformat:2 }} ARS</strong></p>
+    </div>
+    {% endfor %}
+</div>
+
+<h3>🚚 Información de envío:</h3>
+<div style="background-color: #fce4ec; padding: 20px; border-radius: 5px; margin: 20px 0;">
+    {% if orden.direccion_envio %}
+    <p><strong>Dirección:</strong> {{ orden.direccion_envio }}</p>
+    {% endif %}
+    {% if orden.ciudad %}
+    <p><strong>Ciudad:</strong> {{ orden.ciudad }}</p>
+    {% endif %}
+    {% if orden.telefono %}
+    <p><strong>Teléfono:</strong> {{ orden.telefono }}</p>
+    {% endif %}
+</div>
+
+<h3>⏰ ¿Qué sigue?</h3>
+<p>📋 Procesaremos tu orden en las próximas 24 horas<br>
+📦 Te notificaremos cuando tu paquete sea enviado<br>
+🚚 El tiempo de entrega estimado es de 2-5 días hábiles</p>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ site_url }}/ordenes/{{ orden.id }}" class="button">
+        📋 Ver Detalles de la Orden
+    </a>
+</div>
+
+<p>Si tienes alguna pregunta sobre tu orden, no dudes en contactarnos.</p>
+
+<p>¡Gracias por tu compra y confianza!</p>
+
+<p>Saludos cordiales,<br>
+<strong>El equipo de Bloque Mundo</strong></p>
+{% endblock %}

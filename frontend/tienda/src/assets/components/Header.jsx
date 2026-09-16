@@ -1,0 +1,669 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, ShoppingBag, Menu, X, User, Heart, Home } from 'lucide-react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Badge } from './ui/badge';
+import logo from '../img/logo.jpg';
+import { useCarrito } from '../../context/CarritoContext';
+import { useDeseos } from '../../context/DeseosContext';
+import API_BASE_URL from '../../config';
+import gsap from 'gsap';
+
+
+const categories = [
+  { name: 'Star Wars™', slug: 'star-wars', path: '/categoria/star-wars' },
+  { name: 'Technic', slug: 'technic', path: '/categoria/technic' },
+  { name: 'Harry Potter™', slug: 'harry-potter', path: '/categoria/harry-potter' },
+  { name: 'Combos & Packs', slug: 'combos', path: '/combos' },
+  { name: 'Novedades', slug: 'novedades', path: '/TodosProductos' },
+  { name: 'Ofertas', slug: 'ofertas', path: '/TodasOfertas' }
+];
+
+export function Header({ onSearchResults }) {
+  const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [userName, setUserName] = useState('');
+  const [isStaff, setIsStaff] = useState(false);
+  const [isSubMenuOpen, setIsSubMenuOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  const { resumen: carritoResumen } = useCarrito();
+  const { resumen: deseosResumen } = useDeseos();
+  
+  const subMenuRef = useRef(null);
+  const searchRef = useRef(null);
+  const searchTimeout = useRef(null);
+  const headerRef = useRef(null);
+  const headerCursorRef = useRef(null);
+  const xQuickHeader = useRef(null);
+  const yQuickHeader = useRef(null);
+
+
+  const isTokenExpired = (token) => {
+    if (!token) return true;
+    
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Date.now() / 1000;
+      return payload.exp < currentTime;
+    } catch (error) {
+      return true;
+    }
+  };
+
+
+  const validateToken = () => {
+    const token = localStorage.getItem('access_token');
+    if (token && isTokenExpired(token)) {
+      
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      setUserName('');
+      return null;
+    }
+    return token;
+  };
+
+  
+  const fetchUserData = async (userId, token) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/usuarios/${userId}/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        const displayName = userData.username || 
+                           userData.first_name || 
+                           (userData.first_name && userData.last_name ? `${userData.first_name} ${userData.last_name}` : null) ||
+                           `Usuario ${userId}`;
+        setUserName(displayName);
+        if (userData.is_staff || userData.is_superuser) {
+          setIsStaff(true);
+        }
+      } else if (response.status === 401) {
+        
+        validateToken();
+      } else {
+                setUserName(`Usuario ${userId}`);
+      }
+    } catch (error) {
+            setUserName(`Usuario ${userId}`);
+    }
+  };
+
+ 
+  const searchProducts = async (query) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      
+      const response = await fetch(
+  `${API_BASE_URL}/productos/?search=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.ok) {
+        const products = await response.json();
+        setSearchResults(products.slice(0, 8)); 
+        setShowSearchResults(true);
+        
+        
+        if (onSearchResults) {
+          onSearchResults(products, query);
+        }
+      } else {
+                setSearchResults([]);
+        setShowSearchResults(true);
+      }
+    } catch (error) {
+            setSearchResults([]);
+      setShowSearchResults(true);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+    }
+
+    
+    searchTimeout.current = setTimeout(() => {
+      searchProducts(query);
+    }, 300); 
+  };
+
+  
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      searchProducts(searchQuery);
+      setShowSearchResults(false);
+     
+    }
+  };
+
+  
+  const handleSearchResultClick = (product) => {
+    setShowSearchResults(false);
+    setSearchQuery('');
+    navigate(`/producto/${product.id}`);
+  };
+
+  
+  useEffect(() => {
+    const token = validateToken(); 
+    
+    if (token) {
+      try {
+        const decodedToken = JSON.parse(atob(token.split('.')[1]));
+        
+        if (decodedToken.username) {
+          setUserName(decodedToken.username);
+        } else if (decodedToken.user_id) {
+          fetchUserData(decodedToken.user_id, token);
+        } else {
+                  }
+        
+      } catch (error) {
+                validateToken(); 
+      }
+    }
+  }, []);
+
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const token = validateToken();
+      if (!token && userName) {
+        
+        setUserName('');
+      }
+    }, 30000); 
+
+    return () => clearInterval(interval);
+  }, [userName]);
+
+ 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (subMenuRef.current && !subMenuRef.current.contains(event.target)) {
+        setIsSubMenuOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    };
+
+    if (isSubMenuOpen || showSearchResults) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSubMenuOpen, showSearchResults]);
+
+  
+  useEffect(() => {
+    return () => {
+      if (searchTimeout.current) {
+        clearTimeout(searchTimeout.current);
+      }
+    };
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    setUserName('');
+    navigate('/login');
+  };
+
+  const toggleSubMenu = () => {
+    setIsSubMenuOpen(!isSubMenuOpen);
+  };
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      minimumFractionDigits: 0,
+    }).format(price);
+  };
+
+  
+  const handleLogoClick = () => {
+    navigate('/');
+  };
+
+  const handleCategoryClick = (category) => {
+    setIsMenuOpen(false);
+    if (category.path) {
+      navigate(category.path);
+    } else {
+      navigate(`/categoria/${category.slug}`);
+    }
+  };
+
+  useEffect(() => {
+    if (headerCursorRef.current) {
+      xQuickHeader.current = gsap.quickTo(headerCursorRef.current, "x", { duration: 0.3, ease: "power2.out" });
+      yQuickHeader.current = gsap.quickTo(headerCursorRef.current, "y", { duration: 0.3, ease: "power2.out" });
+    }
+  }, []);
+
+  const handleHeaderMouseMove = (e) => {
+    if (!headerRef.current) return;
+    const rect = headerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    if (xQuickHeader.current && yQuickHeader.current) {
+      xQuickHeader.current(mouseX);
+      yQuickHeader.current(mouseY);
+    }
+  };
+
+  const handleHeaderMouseEnter = () => {
+    if (headerCursorRef.current) {
+      gsap.to(headerCursorRef.current, { opacity: 1, scale: 1, duration: 0.3 });
+    }
+  };
+
+  const handleHeaderMouseLeave = () => {
+    if (headerCursorRef.current) {
+      gsap.to(headerCursorRef.current, { opacity: 0, scale: 0.6, duration: 0.3 });
+    }
+  };
+
+  return (
+    <header 
+      ref={headerRef} 
+      className="sticky top-0 z-50 bg-white border-b shadow relative"
+      onMouseMove={handleHeaderMouseMove}
+      onMouseEnter={handleHeaderMouseEnter}
+      onMouseLeave={handleHeaderMouseLeave}
+    >
+      {/* GSAP Header cursor follower spotlight */}
+      <div
+        ref={headerCursorRef}
+        className="pointer-events-none absolute -top-20 -left-20 w-40 h-40 rounded-full opacity-0 z-0 transition-opacity"
+        style={{
+          background: 'radial-gradient(circle, rgba(255, 207, 0, 0.35) 0%, rgba(0, 108, 183, 0.12) 50%, rgba(255, 255, 255, 0) 70%)',
+          filter: 'blur(12px)',
+          willChange: 'transform'
+        }}
+      />
+      
+      <div className="display py-2 px-4 text-center font-bold relative z-10" style={{ background: 'var(--color-life-principal)', color: 'var(--color-life-background)' }}>
+        <p> Envío gratis en compras sobre $50.000 </p>
+      </div>
+
+      
+      <div className="max-w-7xl mx-auto px-2 sm:px-4">
+        <div className="flex items-center justify-between h-14 sm:h-26 gap-2 sm:gap-4">
+      
+          <div className="flex items-center flex-shrink-0 pl-0 sm:pl-8">
+            <img 
+              src={logo} 
+              alt="Bloque Mundo" 
+              className="h-16 md:h-18 lg:h-20 w-auto object-contain cursor-pointer" 
+              onClick={handleLogoClick}
+            />
+          </div>
+
+      
+          <div className="hidden md:flex flex-1 max-w-2xl mx-8" ref={searchRef}>
+            <form onSubmit={handleSearchSubmit} className="relative w-full">
+              <Search className="display absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: '#e4f5ffff' }} />
+              <Input
+                type="search"
+                placeholder="Busca productos, categorías..."
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className="display pl-10 pr-4 h-12 border-2 rounded-full"
+                style={{
+                  borderColor: '#1E1F26',
+                  backgroundColor: '#ffffff',
+                  color: '#000000ff'
+                }}
+              />
+              
+      
+              {showSearchResults && (
+                <div className="display absolute top-full left-0 right-0 mt-2 bg-white border rounded-md shadow-lg z-50 max-h-96 overflow-y-auto">
+                  {isSearching ? (
+                    <div className="display p-4 text-center" style={{ color: '#c6e8e9ff' }}>
+                      Buscando productos...
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <>
+                      {searchResults.map((product) => (
+                        <div
+                          key={product.id}
+                          className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                          onClick={() => handleSearchResultClick(product)}
+                        >
+                          <div className="w-12 h-12 bg-white p-1 rounded border flex items-center justify-center flex-shrink-0 mr-3">
+                            <img
+                              src={product.imagen}
+                              alt={product.nombre}
+                              className="w-full h-full object-contain rounded"
+                              onError={(e) => {
+                                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjZjNmNGY2Ii8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzZaIiBmaWxsPSIjZTFlNWU5Ii8+Cjwvc3ZnPgo=';
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium text-sm" style={{ color: '#000000ff' }}>
+                              {product.nombre}
+                            </h4>
+                            <p className="text-xs" style={{ color: '#4D648D' }}>
+                              {product.categoria}
+                            </p>
+                            <p className="text-sm font-semibold" style={{ color: '#080001ff' }}>
+                              {formatPrice(product.precio)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="p-3 border-t bg-gray-50">
+                        <button
+                          type="submit"
+                          className="display w-full text-center text-sm font-medium"
+                          style={{ color: '#4D648D' }}
+                        >
+                          Ver todos los resultados para "{searchQuery}"
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="display p-4 text-center" style={{ color: '#4D648D' }}>
+                      No se encontraron productos para "{searchQuery}"
+                    </div>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* Acciones */}
+          <div className="flex items-center gap-2">
+            {/* Cuenta de usuario */}
+            {userName ? (
+              <div className="relative" ref={subMenuRef}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="display hidden md:flex items-center gap-2"
+                  style={{ color: '#070001ff' }}
+                  onClick={toggleSubMenu}
+                >
+                  <User className="h-4 w-4" />
+                  <span className="hidden lg:inline">{userName}</span>
+                </Button>
+
+                {/* Submenú */}
+                {isSubMenuOpen && (
+                  <div className="display absolute top-full right-0 mt-2 w-52 bg-white border rounded-xl shadow-xl z-50 overflow-hidden">
+                    <div className="py-1">
+                      {isStaff && (
+                        <Button 
+                          variant="ghost" 
+                          className="w-full text-left px-4 py-2.5 bg-blue-50/80 hover:bg-blue-100 text-blue-900 font-bold flex items-center justify-between border-b border-blue-100" 
+                          onClick={() => { setIsSubMenuOpen(false); navigate('/admin/productos'); }}
+                        >
+                          <span>⚙️ Panel Admin</span>
+                          <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-bold">STAFF</span>
+                        </Button>
+                      )}
+                      <Button 
+                        variant="ghost" 
+                        className="w-full text-left px-4 py-2 hover:bg-gray-100" 
+                        style={{ color: '#000000ff' }}
+                        onClick={() => { setIsSubMenuOpen(false); navigate('/historial-compras'); }}
+                      >
+                        Historial de Compras
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        className="deseados w-full text-left px-4 py-2 hover:bg-gray-100" 
+                        style={{ color: '#000000ff' }}
+                        onClick={() => { setIsSubMenuOpen(false); navigate('/deseados'); }}
+                      >
+                        Lista de Deseados
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        className="carrito w-full text-left px-4 py-2 hover:bg-gray-100" 
+                        style={{ color: '#000000ff' }}
+                        onClick={() => { setIsSubMenuOpen(false); navigate('/carrito'); }}
+                      >
+                        Carrito de Compra
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full text-left px-4 py-2 hover:bg-gray-100"
+                        style={{ color: '#000000ff' }}
+                        onClick={() => { setIsSubMenuOpen(false); handleLogout(); }}
+                      >
+                        Cerrar Sesión
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Button
+             variant="ghost"
+             size="sm"
+             className="display hidden md:flex items-center gap-2 btn-ghost-login"
+             style={{ color: '#000000ff' }}
+             onClick={() => navigate('/login')}
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden lg:inline">Iniciar Sesión</span>
+              </Button>
+            )}
+
+            {/* Lista de deseos - ACTUALIZADA */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="relative p-1 sm:p-2 btn-ghost-icon"
+              onClick={() => navigate('/deseados')}
+            >
+              <Heart className="h-5 w-5 sm:h-5 sm:w-5" style={{ color: '#000000ff' }} />
+              {deseosResumen?.total_items > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="display absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-white text-[10px] sm:text-xs"
+                  style={{ backgroundColor: 'var(--color-life-indigo)' }}
+                >
+                  {deseosResumen.total_items}
+                </Badge>
+              )}
+            </Button>
+
+            {/* Carrito de compras - ACTUALIZADO */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="relative p-1 sm:p-2 btn-ghost-icon"
+              onClick={() => navigate('/carrito')}
+            >
+              <ShoppingBag className="h-5 w-5 sm:h-5 sm:w-5" style={{ color: '#000000ff' }} />
+              {carritoResumen?.total_items > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="display absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-white text-[10px] sm:text-xs"
+                  style={{ backgroundColor: 'var(--color-life-indigo)' }}
+                >
+                  {carritoResumen.total_items}
+                </Badge>
+              )}
+            </Button>
+
+            {/* Menú móvil */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="md:hidden p-1 sm:p-2"
+              style={{ color: '#000000ff' }}
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
+        </div>
+
+        {/* Búsqueda en móvil - OCULTA */}
+        <div className="hidden">
+          <form onSubmit={handleSearchSubmit} className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
+              style={{ color: '#020001ff' }}
+            />
+            <Input
+              type="search"
+              placeholder="Busca productos..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              className="pl-10 pr-4 h-10 border-2 rounded-full"
+              style={{
+                borderColor: '#000000ff',
+                backgroundColor: '#d1d1d1ff',
+                color: '#000000ff'
+              }}
+            />
+          </form>
+        </div>
+
+        {/* Navegación de escritorio */}
+        <nav className="hidden md:block border-t" style={{ borderColor: '#38b100ff' }}>
+          <div className="display flex items-center gap-8 py-3">
+            {/* Botón HOME a la izquierda */}
+            <Button
+              variant="ghost"
+              className="flex items-center gap-2 transition-colors ml-8 btn-menu-home"
+              style={{ color: '#000000ff' }}
+              onMouseOver={e => {
+                    e.currentTarget.style.color = 'var(--color-life-background)';
+                    e.currentTarget.style.backgroundColor = 'var(--color-life-principal)';
+              }}
+              onMouseOut={e => {
+                e.currentTarget.style.color = '#000000ff';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              onClick={handleLogoClick}
+            >
+              <Home className="h-4 w-4" />
+              Inicio
+            </Button>
+            
+            {/* Categorías centradas - Ocultas en móvil, visibles en desktop */}
+            <div className="hidden lg:flex items-center justify-center gap-4 xl:gap-6 flex-1 overflow-x-auto">
+              {categories.map((category) => (
+                <Button
+                  key={category.slug}
+                  variant="ghost"
+                  className="transition-colors whitespace-nowrap text-sm xl:text-base px-2 xl:px-3 cursor-pointer"
+                  style={{ color: '#000000ff' }}
+                  onMouseOver={e => {
+                    e.currentTarget.style.color = 'var(--color-life-background)';
+                    e.currentTarget.style.backgroundColor = 'var(--color-life-principal)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.color = '#000000ff';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={() => handleCategoryClick(category)}
+                >
+                  {category.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </nav>
+      </div>
+
+      {/* Navegación móvil */}
+      {isMenuOpen && (
+        <nav className="md:hidden border-t py-4" style={{ borderColor: '#f6dae7' }}>
+          <div className="display flex flex-col gap-2 px-4">
+            {/* Botón HOME en móvil */}
+            <Button
+              variant="ghost"
+              className="justify-start"
+              style={{ color: '#000000ff' }}
+              onClick={handleLogoClick}
+            >
+              <Home className="h-4 w-4 mr-2" />
+              Inicio
+            </Button>
+            {isStaff && (
+              <Button
+                variant="ghost"
+                className="justify-start bg-blue-50 text-blue-900 font-bold"
+                onClick={() => { setIsMenuOpen(false); navigate('/admin/productos'); }}
+              >
+                ⚙️ Panel Admin
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              className="justify-start"
+              style={{ color: '#000000ff' }}
+              onClick={() => { setIsMenuOpen(false); navigate('/login'); }}
+            >
+              <User className="h-4 w-4 mr-2" />
+              Mi Cuenta
+            </Button>
+            {categories.map((category) => (
+              <Button
+                key={category.slug}
+                variant="ghost"
+                className="justify-start"
+                style={{ color: '#000000ff' }}
+                onMouseOver={e => {
+                  e.currentTarget.style.color = '#0c0002ff';
+                  e.currentTarget.style.backgroundColor = 'var(--color-life-principal)';
+                }}
+                onMouseOut={e => {
+                  e.currentTarget.style.color = '#070001ff';
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCategoryClick(category)}
+              >
+                {category.name}
+              </Button>
+            ))}
+          </div>
+        </nav>
+      )}
+    </header>
+  );
+}
