@@ -11,6 +11,7 @@ from categorias.views import CategoriaViewSet
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
+from ofertas.views import ComboListView, ComboDetailView
 
 router = DefaultRouter()
 router.register(r'productos', ProductoViewSet, basename='producto') 
@@ -37,6 +38,10 @@ urlpatterns = [
     
 
     path('api/ofertas/', include('ofertas.urls')),
+    path('api/combos/', include([
+        path('', ComboListView.as_view(), name='combos-root'),
+        path('<int:pk>/', ComboDetailView.as_view(), name='combos-detail-root'),
+    ])),
 
     path('api/ordenes/', include('ordenes.urls')),
     
@@ -48,6 +53,7 @@ urlpatterns = [
     path('api/notificaciones/', include('notificaciones.urls')),
 
     path('api/reseñas/', include('reseñas.urls')),
+    path('api/resenas/', include('reseñas.urls')),
     path('api/cupones/', include('cupones.urls')),
     path('api/envios/', include('envios.urls')),
 

@@ -41,6 +41,23 @@ class OrdenViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(ordenes, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def detalle_orden(self, request, pk=None):
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Usuario no autenticado'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        try:
+            orden = self.get_object()
+            serializer = self.get_serializer(orden)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': f'Orden no encontrada: {str(e)}'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
     @action(detail=False, methods=['get'])
     def verificar_orden_pendiente(self, request):
         if not request.user.is_authenticated:
@@ -307,13 +324,17 @@ class OrdenViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        session_key = request.session.session_key
+        session_key = (
+            request.data.get('session_key') or 
+            request.headers.get('X-Session-Key') or 
+            request.session.session_key
+        )
         
-        if not session_key:
-            return Response(
-                {'error': 'No hay sesión activa'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if not session_key and not request.session.session_key:
+            request.session.create()
+            session_key = request.session.session_key
+        elif not session_key:
+            session_key = request.session.session_key
 
         carrito_items = Carrito.objects.filter(session_key=session_key)
         
@@ -392,31 +413,88 @@ class OrdenViewSet(viewsets.ModelViewSet):
             total_final = (total_productos + costo_envio) - descuento_cupon
             if total_final < 0:
                 total_final = 0
-            
+
+            # Cancelar ordenes previas pendientes para esta misma session
+            Orden.objects.filter(
+                session_key=session_key,
+                estado='pendiente'
+            ).update(estado='cancelado')
+
+            # Crear la orden de invitado en la base de datos
+            orden = Orden.objects.create(
+                usuario=None,
+                session_key=session_key,
+                email_invitado=serializer.validated_data['email'],
+                nombre_invitado=serializer.validated_data['nombre'],
+                telefono_invitado=serializer.validated_data.get('telefono', ''),
+                direccion_invitado=serializer.validated_data.get('direccion', ''),
+                metodo_entrega=metodo_entrega,
+                costo_envio=costo_envio,
+                total=total_final,
+                estado='pendiente'
+            )
+
+            for item in carrito_items:
+                producto = item.producto
+                precio_unitario = producto.precio
+                try:
+                    oferta_activa = producto.ofertas.filter(
+                        activo=True,
+                        fecha_inicio__lte=now
+                    ).filter(
+                        models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
+                    ).first()
+                    if oferta_activa:
+                        precio_unitario = oferta_activa.precio_con_descuento
+                except Exception:
+                    pass
+
+                subtotal = precio_unitario * item.cantidad
+                OrdenProducto.objects.create(
+                    orden=orden,
+                    producto_id=producto.id,
+                    nombre_producto=producto.nombre,
+                    precio_producto=precio_unitario,
+                    cantidad=item.cantidad,
+                    subtotal=subtotal
+                )
+
+            Pago.objects.create(
+                orden=orden,
+                monto=total_final,
+                estado='pendiente'
+            )
+
             request.session['datos_invitado'] = {
+                'orden_id': orden.id,
                 'email': serializer.validated_data['email'],
                 'nombre': serializer.validated_data['nombre'],
-                'telefono': serializer.validated_data['telefono'],
-                'direccion': serializer.validated_data['direccion'],
+                'telefono': serializer.validated_data.get('telefono', ''),
+                'direccion': serializer.validated_data.get('direccion', ''),
                 'metodo_entrega': metodo_entrega,
-                'costo_envio': costo_envio,
+                'costo_envio': float(costo_envio),
                 'total_productos': float(total_productos),
                 'descuento_cupon': float(descuento_cupon),
                 'cupon_codigo': cupon_codigo if descuento_cupon > 0 else None,
                 'envio_gratis_desbloqueado': envio_gratis_desbloqueado,
                 'total': float(total_final)
             }
-            request.session.save()
+            if hasattr(request, 'session') and hasattr(request.session, 'save'):
+                try:
+                    request.session.save()
+                except Exception:
+                    pass
             
             return Response({
+                'orden_id': orden.id,
                 'session_key': session_key,  
-                'total': total_final,
-                'total_productos': total_productos,
+                'total': float(total_final),
+                'total_productos': float(total_productos),
                 'metodo_entrega': metodo_entrega,
-                'costo_envio': costo_envio,
+                'costo_envio': float(costo_envio),
                 'descuento_cupon': float(descuento_cupon),
                 'envio_gratis_desbloqueado': envio_gratis_desbloqueado,
-                'message': 'Datos preparados para el pago'
+                'message': 'Orden de invitado creada exitosamente'
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -424,3 +502,65 @@ class OrdenViewSet(viewsets.ModelViewSet):
                 {'error': str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=False, methods=['get'])
+    def reporte_ventas(self, request):
+        if not (request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)):
+            return Response({'error': 'Permiso denegado. Solo administradores.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from productos.models import Producto
+
+        ordenes = Orden.objects.all().prefetch_related('productos')
+        ordenes_pagadas = ordenes.filter(estado__in=['pagado', 'enviado', 'entregado', 'procesando'])
+
+        total_ingresos = sum(float(o.total) for o in ordenes_pagadas)
+        total_ordenes = ordenes.count()
+        total_pagadas = ordenes_pagadas.count()
+        ticket_promedio = (total_ingresos / total_pagadas) if total_pagadas > 0 else 0
+
+        # Ventas por producto
+        productos_vendidos = {}
+        for orden in ordenes_pagadas:
+            for item in orden.productos.all():
+                prod_id = item.producto_id
+                if prod_id not in productos_vendidos:
+                    imagen_url = None
+                    try:
+                        p_obj = Producto.objects.filter(id=prod_id).first()
+                        if p_obj and p_obj.imagen:
+                            imagen_url = request.build_absolute_uri(p_obj.imagen.url)
+                    except Exception:
+                        pass
+
+                    productos_vendidos[prod_id] = {
+                        'id': prod_id,
+                        'nombre': item.nombre_producto,
+                        'imagen': imagen_url,
+                        'unidades': 0,
+                        'total_generado': 0
+                    }
+                productos_vendidos[prod_id]['unidades'] += item.cantidad
+                precio_unit = float(item.precio_producto) if item.precio_producto else 0
+                productos_vendidos[prod_id]['total_generado'] += float(item.subtotal) if item.subtotal else (precio_unit * item.cantidad)
+
+        top_productos = sorted(productos_vendidos.values(), key=lambda x: x['unidades'], reverse=True)[:8]
+        total_unidades = sum(p['unidades'] for p in productos_vendidos.values())
+
+        # Conteo por estado
+        estados_count = {}
+        for orden in ordenes:
+            estados_count[orden.estado] = estados_count.get(orden.estado, 0) + 1
+
+        # Ventas recientes (ultimas 15 ordenes)
+        ordenes_recientes = OrdenSerializer(ordenes.order_by('-fecha')[:15], many=True, context={'request': request}).data
+
+        return Response({
+            'total_ingresos': total_ingresos,
+            'total_ordenes': total_ordenes,
+            'total_pagadas': total_pagadas,
+            'ticket_promedio': ticket_promedio,
+            'total_unidades': total_unidades,
+            'estados_count': estados_count,
+            'top_productos': top_productos,
+            'ordenes_recientes': ordenes_recientes
+        })

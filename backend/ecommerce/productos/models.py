@@ -14,3 +14,10 @@ class Producto(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    def save(self, *args, **kwargs):
+        # Si un producto no está activo, tampoco puede estar destacado
+        if not self.activo:
+            self.destacado = False
+        super().save(*args, **kwargs)
+

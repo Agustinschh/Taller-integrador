@@ -9,6 +9,7 @@ class ReseñaViewSet(viewsets.ModelViewSet):
     serializer_class = ReseñaSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['producto']
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:

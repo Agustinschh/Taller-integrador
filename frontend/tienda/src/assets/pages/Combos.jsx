@@ -8,6 +8,7 @@ import API_BASE_URL from '../../config';
 
 const Combos = () => {
   const [products, setProducts] = useState([]);
+  const [apiCombos, setApiCombos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('todos');
@@ -19,22 +20,29 @@ const Combos = () => {
   const { agregarProducto } = useCarrito();
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchCombosAndProducts = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/productos/`);
-        if (response.ok) {
-          const data = await response.json();
-          setProducts(data);
+        const [prodsRes, combosRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/productos/`),
+          fetch(`${API_BASE_URL}/ofertas/combos/`).catch(() => null)
+        ]);
+        if (prodsRes && prodsRes.ok) {
+          const data = await prodsRes.json();
+          setProducts(Array.isArray(data) ? data : []);
+        }
+        if (combosRes && combosRes.ok) {
+          const combosData = await combosRes.json();
+          setApiCombos(Array.isArray(combosData) ? combosData : []);
         }
       } catch (error) {
-        console.error('Error fetching products:', error);
+        console.error('Error fetching products/combos:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProducts();
+    fetchCombosAndProducts();
   }, []);
 
   const formatPrice = (price) => {
@@ -138,6 +146,10 @@ const Combos = () => {
       const precioCombo = Math.round(precioOriginalTotal * (1 - template.descuentoPorcentaje / 100));
       const ahorroTotal = precioOriginalTotal - precioCombo;
 
+      const stockIndividuales = items.map(item => Number(item.stock || 0));
+      const comboStockCalculado = stockIndividuales.length ? Math.min(...stockIndividuales) : 0;
+      const stockFinal = template.stock !== undefined ? template.stock : comboStockCalculado;
+
       return {
         ...template,
         items,
@@ -145,7 +157,8 @@ const Combos = () => {
         precioOriginalTotal,
         precioCombo,
         ahorroTotal,
-        stockDisponible: items.every(item => (item.stock || 0) > 0)
+        stock: stockFinal,
+        stockDisponible: stockFinal > 0
       };
     }).filter(Boolean);
 
@@ -170,7 +183,37 @@ const Combos = () => {
         destacado: false
       }));
 
-    return [...builtCombos, ...standalonePacks];
+    // Also map real database combos created by admin
+    const dbCombosFormatted = apiCombos.map(combo => {
+      const items = (combo.items || []).map(it => it.producto || getProd(it.producto_id)).filter(Boolean);
+      const precioOriginalTotal = Number(combo.precio_original_total) || items.reduce((acc, item) => acc + Number(item.precio || 0), 0);
+      const precioCombo = Number(combo.precio);
+      const ahorroTotal = Math.max(0, precioOriginalTotal - precioCombo);
+      const descuentoPorcentaje = combo.porcentaje_ahorro || (precioOriginalTotal > 0 ? Math.round((ahorroTotal / precioOriginalTotal) * 100) : 0);
+
+      return {
+        id: `db-combo-${combo.id}`,
+        dbId: combo.id,
+        nombre: combo.nombre,
+        tema: combo.tema?.toLowerCase().replace(/\s+/g, '-') || 'especial',
+        badge: combo.destacado ? '⭐ Destacado' : (combo.tema || 'Combo Especial'),
+        badgeColor: combo.destacado ? '#D97706' : '#7C3AED',
+        descuentoPorcentaje,
+        descripcion: combo.descripcion || 'Pack temático exclusivo armado por la tienda.',
+        items,
+        imagenPrincipal: combo.imagen || items[0]?.imagen || '/secreto_lego.jpg',
+        precioOriginalTotal,
+        precioCombo,
+        ahorroTotal,
+        stock: combo.stock,
+        stockDisponible: Number(combo.stock) > 0,
+        destacado: combo.destacado
+      };
+    });
+
+    return dbCombosFormatted.length > 0 
+      ? [...dbCombosFormatted, ...standalonePacks] 
+      : [...builtCombos, ...standalonePacks];
   };
 
   const allCombos = generateCombos();
@@ -497,18 +540,34 @@ const Combos = () => {
                           </span>
                         </div>
 
-                        <div className="text-right">
+                        <div className="text-right flex flex-col items-end gap-1">
                           <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
                             Ahorras {formatPrice(combo.ahorroTotal)}
                           </span>
+                          {/* Badge de Stock del Combo */}
+                          {!combo.stockDisponible || combo.stock === 0 ? (
+                            <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                              Combo Agotado
+                            </span>
+                          ) : combo.stock < 5 ? (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-300 animate-pulse">
+                              🔥 ¡Pocas unidades! ({combo.stock})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-500">
+                              {combo.stock} combos disponibles
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       <Button
                         onClick={() => handleAddComboToCart(combo)}
-                        disabled={isAdding}
+                        disabled={isAdding || !combo.stockDisponible || combo.stock === 0}
                         className={`w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-md transition-all duration-300 ${
-                          isAdded 
+                          !combo.stockDisponible || combo.stock === 0
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            : isAdded 
                             ? 'bg-emerald-600 text-white' 
                             : 'bg-yellow-400 hover:bg-yellow-500 text-slate-950 hover:shadow-lg'
                         }`}
@@ -518,6 +577,8 @@ const Combos = () => {
                             <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-900 border-t-transparent" />
                             <span>Añadiendo combo...</span>
                           </>
+                        ) : !combo.stockDisponible || combo.stock === 0 ? (
+                          <span>Combo sin stock disponible</span>
                         ) : isAdded ? (
                           <>
                             <Check className="h-4 w-4" />

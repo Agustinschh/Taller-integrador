@@ -13,6 +13,7 @@ import TodosProductos from "./assets/pages/TodosProductos";
 import TodasOfertas from "./assets/pages/TodasOfertas";
 import Combos from "./assets/pages/Combos";
 import HistorialCompras from "./assets/pages/HistorialCompras";
+import OrdenDetalle from "./assets/pages/OrdenDetalle";
 import EstadoPago from "./assets/pages/EstadoPago"; 
 import AdminDashboard from "./assets/pages/AdminDashboard";
 
@@ -22,6 +23,7 @@ const Rutas = () => (
     <Route path="/" element={<Inicio />} />
     <Route path="/productos" element={<Productos />} />
     <Route path="/TodosProductos" element={<TodosProductos />} />
+    <Route path="/destacados" element={<TodosProductos />} />
     <Route path="/TodasOfertas" element={<TodasOfertas />} />
     <Route path="/combos" element={<Combos />} />
     <Route path="/Combos" element={<Combos />} />
@@ -33,6 +35,7 @@ const Rutas = () => (
     <Route path="/deseados" element={<Deseados />} />
     <Route path="/registro" element={<Registro />} />
     <Route path="/historial-compras" element={<HistorialCompras />} />
+    <Route path="/orden/:id" element={<OrdenDetalle />} />
     <Route path="/admin/productos" element={<AdminDashboard />} />
     <Route path="/admin-dashboard" element={<AdminDashboard />} />
     <Route path="/pago/procesar/:ordenId" element={<EstadoPago />} />

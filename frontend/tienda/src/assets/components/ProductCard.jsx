@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "./ui/card.jsx";
 import { Button } from "./ui/button.jsx";
-import { Heart, ShoppingCart, Eye, Star, Tag } from "lucide-react";
+import { Heart, ShoppingCart, Eye, Star, Tag, Film, Baby, Sparkles } from "lucide-react";
 import { useCarrito } from "../../context/CarritoContext.jsx";
 import { useDeseos } from "../../context/DeseosContext.jsx";
 import AuthModal from "./AuthModal.jsx";
@@ -44,6 +44,59 @@ const ProductCard = ({ product }) => {
   if (!product) {
     return <div>Producto no disponible</div>;
   }
+
+  // Extracción robusta de Película / Saga
+  const getPeliculaSaga = () => {
+    if (product.pelicula_saga) return product.pelicula_saga;
+    
+    let cats = [];
+    if (Array.isArray(product.categorias)) {
+      cats = product.categorias.map(c => typeof c === 'string' ? c : c.nombre).filter(Boolean);
+    } else if (product.categoria) {
+      cats = [product.categoria];
+    }
+
+    const nonAgeCats = cats.filter(c => !c.toLowerCase().includes('año') && !c.toLowerCase().includes('adulto'));
+    const allText = (nonAgeCats.join(' ') + ' ' + (product.nombre || '')).toLowerCase();
+
+    if (allText.includes('star wars')) return 'Star Wars';
+    if (allText.includes('harry potter') || allText.includes('fantastic beasts') || allText.includes('hogwarts')) return 'Harry Potter';
+    if (allText.includes('marvel') || allText.includes('infinity saga') || allText.includes('spider-man') || allText.includes('spiderman') || allText.includes('iron man') || allText.includes('avengers')) return 'Marvel';
+    if (allText.includes('batman') || allText.includes('dc comics') || allText.includes('super heroes dc') || allText.includes('superman')) return 'DC / Batman';
+    if (allText.includes('jurassic')) return 'Jurassic World';
+    if (allText.includes('mario')) return 'Super Mario';
+    if (allText.includes('lord of the rings') || allText.includes('hobbit')) return 'El Señor de los Anillos';
+    if (allText.includes('disney') || allText.includes('frozen') || allText.includes('toy story') || allText.includes('mickey')) return 'Disney';
+    if (allText.includes('minecraft')) return 'Minecraft';
+    if (allText.includes('ninjago')) return 'Ninjago';
+    if (allText.includes('pok')) return 'Pokémon';
+    if (allText.includes('fortnite')) return 'Fortnite';
+    if (allText.includes('speed champions')) return 'Speed Champions';
+    if (allText.includes('technic')) return 'Technic';
+    if (allText.includes('friends')) return 'Friends';
+    if (allText.includes('city') || allText.includes('police') || allText.includes('town')) return 'City';
+    
+    if (nonAgeCats.length > 0) return nonAgeCats[0];
+    return 'Colección';
+  };
+
+  // Extracción robusta de Rango de Edad
+  const getEdad = () => {
+    if (product.edad && product.edad !== 'Todas las edades') return product.edad;
+    
+    let cats = [];
+    if (Array.isArray(product.categorias)) {
+      cats = product.categorias.map(c => typeof c === 'string' ? c : c.nombre).filter(Boolean);
+    } else if (product.categoria) {
+      cats = [product.categoria];
+    }
+
+    const ageCat = cats.find(c => c.toLowerCase().includes('año') || c.toLowerCase().includes('adulto'));
+    return ageCat || 'Todas las edades';
+  };
+
+  const peliculaSaga = getPeliculaSaga();
+  const edad = getEdad();
 
   const isWishlisted = deseosItems.some(
     (item) =>
@@ -133,9 +186,8 @@ const ProductCard = ({ product }) => {
           boxShadow: isHovered
             ? "0 8px 32px 0 rgba(77, 100, 141, 0.18)"
             : "0 2px 8px 0 rgba(40, 54, 85, 0.08)",
-          height: isMobile ? "auto" : isTablet ? "520px" : "600px",
+          height: "100%",
           width: "100%",
-          minHeight: isMobile ? "400px" : isTablet ? "520px" : "600px",
         }}
       >
         {isOnSale && (
@@ -164,7 +216,7 @@ const ProductCard = ({ product }) => {
           <div
             className="relative overflow-hidden bg-white p-3 flex items-center justify-center"
             style={{
-              height: isMobile ? "200px" : isTablet ? "240px" : "300px",
+              height: isMobile ? "170px" : isTablet ? "190px" : "210px",
             }}
           >
             <img
@@ -219,141 +271,112 @@ const ProductCard = ({ product }) => {
           </div>
 
           <div
-            className="flex flex-col flex-1"
+            className="flex flex-col flex-1 justify-between"
             style={{
-              minHeight: isMobile ? "100px" : isTablet ? "120px" : "150px",
-              padding: isMobile ? "12px" : isTablet ? "14px" : "20px",
+              padding: isMobile ? "10px" : "12px",
               color: "#283655",
             }}
           >
-            <div
-              className="text-xs font-bold uppercase tracking-wide mb-1"
-              style={{
-                color: "var(--color-life-indigo)",
-                height: "14px",
-                fontSize: isMobile ? "10px" : isTablet ? "11px" : "12px",
-              }}
-            >
-              {product.categoria}
-            </div>
-
-            <h3
-              className="display font-bold group-hover:underline transition-colors mb-2"
-              style={{
-                color: "#000000",
-                height: isMobile ? "auto" : isTablet ? "54px" : "72px",
-                minHeight: isMobile ? "36px" : isTablet ? "54px" : "72px",
-                display: "-webkit-box",
-                WebkitLineClamp: isMobile ? 2 : isTablet ? 2 : 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                lineHeight: "1.3",
-                fontSize: isMobile ? "14px" : isTablet ? "15px" : "16px",
-              }}
-            >
-              {isMobile
-                ? truncateToWords(product.nombre, 3)
-                : isTablet
-                ? truncateToWords(product.nombre, 4)
-                : product.nombre}
-            </h3>
-
-            {!isMobile && (
-              <p
-                className="display mb-3"
-                style={{
-                  color: "#2C2C2C",
-                  minHeight: isTablet ? "36px" : "40px",
-                  maxHeight: isTablet ? "40px" : "50px",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                  lineHeight: "1.4",
-                  fontSize: isTablet ? "12px" : "14px",
-                }}
-              >
-                {truncateToWords(product.descripcion, isTablet ? 8 : 10)}
-              </p>
-            )}
-
-            <div className="flex-1"></div>
-
-            <div className="flex-1"></div>
-
-            <div className="flex-1"></div>
-
-            <div
-              className="display flex items-center justify-center mb-1 mt-2"
-              style={{
-                height: isMobile ? "20px" : isTablet ? "22px" : "24px",
-              }}
-            >
-              <span 
-                className="text-xs font-medium px-2 py-0.5 rounded-full"
-                style={{ 
-                  backgroundColor: product.stock === 0 ? '#fee2e2' : product.stock === 1 ? '#ffedd5' : product.stock <= 5 ? '#fef9c3' : '#dcfce7',
-                  color: product.stock === 0 ? '#991b1b' : product.stock === 1 ? '#9a3412' : product.stock <= 5 ? '#854d0e' : '#166534',
-                  fontSize: isMobile ? "10px" : isTablet ? "11px" : "12px",
-                }}
-              >
-                {product.stock === 0 ? 'Sin stock' : product.stock === 1 ? '¡Última unidad!' : product.stock <= 5 ? 'Pocas unidades' : 'Disponible'}
-              </span>
-            </div>
-
-            <div
-              className="display flex flex-col items-center justify-center gap-1 mb-3"
-              style={{
-                minHeight: isMobile ? "40px" : isTablet ? "44px" : "50px",
-              }}
-            >
-              <span
-                className="font-bold text-center leading-tight"
-                style={{
-                  color: isOnSale ? "var(--color-life-blueberry)" : "#000000",
-                  fontSize: isMobile ? "16px" : isTablet ? "17px" : "18px",
-                }}
-              >
-                {formatPrice(displayPrice)}
-              </span>
-              {isOnSale && originalPrice && (
+            <div>
+              {/* Etiquetas Duales: Película / Saga y Rango de Edad */}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 min-h-[22px]">
+                {/* Etiqueta Película / Saga */}
                 <span
-                  className="line-through text-gray-400 text-center"
+                  className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-300 shadow-xs max-w-[150px] truncate"
+                  title={`Película / Saga: ${peliculaSaga}`}
+                >
+                  <Film className="h-3 w-3 text-amber-600 flex-shrink-0" />
+                  <span className="truncate">{peliculaSaga}</span>
+                </span>
+
+                {/* Etiqueta Rango de Edad */}
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-xs flex-shrink-0"
+                  title={`Rango de edad: ${edad}`}
+                >
+                  <Baby className="h-3 w-3 text-indigo-500 flex-shrink-0" />
+                  <span>{edad}</span>
+                </span>
+              </div>
+
+              {/* Título del producto con altura estandarizada y line-clamp */}
+              <h3
+                className="font-bold group-hover:text-blue-700 transition-colors mb-2 text-slate-900 line-clamp-2"
+                style={{
+                  minHeight: isMobile ? "34px" : "38px",
+                  maxHeight: isMobile ? "34px" : "38px",
+                  lineHeight: "1.25",
+                  fontSize: isMobile ? "13px" : isTablet ? "13.5px" : "14px",
+                }}
+                title={product.nombre}
+              >
+                {product.nombre}
+              </h3>
+            </div>
+
+            {/* Bloque Inferior: Stock, Precio y Botón alineados */}
+            <div className="mt-auto pt-2 border-t border-slate-100 flex flex-col justify-end">
+              {/* Stock Badge */}
+              <div className="flex items-center justify-center mb-2 min-h-[22px]">
+                {product.stock === 0 ? (
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">
+                    Sin stock
+                  </span>
+                ) : product.stock < 5 ? (
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse flex items-center gap-1">
+                    🔥 ¡Pocas unidades! ({product.stock})
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    ✓ Disponible
+                  </span>
+                )}
+              </div>
+
+              {/* Precio */}
+              <div className="flex flex-col items-center justify-center gap-0.5 mb-2 min-h-[42px]">
+                <span
+                  className="font-extrabold text-center leading-tight text-slate-900"
                   style={{
-                    fontSize: isMobile ? "11px" : isTablet ? "12px" : "14px",
+                    fontSize: isMobile ? "16px" : isTablet ? "17px" : "18px",
                   }}
                 >
-                  {formatPrice(originalPrice)}
+                  {formatPrice(displayPrice)}
                 </span>
-              )}
-            </div>
+                {isOnSale && originalPrice && (
+                  <span className="line-through text-slate-400 text-xs text-center">
+                    {formatPrice(originalPrice)}
+                  </span>
+                )}
+              </div>
 
-            <div
-              className="lg:hidden"
-              style={{ height: isMobile ? "36px" : "40px" }}
-            >
-              <Button
-                className="w-full h-full font-bold"
-                style={{
-                  background: hasStock && isActive ? "var(--color-life-accent)" : "var(--color-life-blueberry)",
-                  color: "#000000",
-                  opacity: isAddingToCart ? 0.6 : 1,
-                  padding: isMobile ? "6px 12px" : "8px 14px",
-                  fontSize: isMobile ? "13px" : "14px",
-                }}
-                onClick={handleAddToCart}
-                disabled={!hasStock || !isActive || isAddingToCart}
+              {/* Botón de compra en móvil/tablet */}
+              <div
+                className="lg:hidden w-full"
+                style={{ height: isMobile ? "36px" : "40px" }}
               >
-                <ShoppingCart
-                  className={isMobile ? "h-3 w-3 mr-1" : "h-4 w-4 mr-2"}
-                  style={{ color: "#000000" }}
-                />
-                {isAddingToCart
-                  ? "Agregando..."
-                  : hasStock && isActive
-                  ? "Agregar"
-                  : "Agotado"}
-              </Button>
+                <Button
+                  className="w-full h-full font-bold shadow-sm"
+                  style={{
+                    background: hasStock && isActive ? "var(--color-life-accent)" : "#cbd5e1",
+                    color: hasStock && isActive ? "#000000" : "#64748b",
+                    opacity: isAddingToCart ? 0.6 : 1,
+                    padding: isMobile ? "6px 12px" : "8px 14px",
+                    fontSize: isMobile ? "12px" : "13px",
+                  }}
+                  onClick={handleAddToCart}
+                  disabled={!hasStock || !isActive || isAddingToCart}
+                >
+                  <ShoppingCart
+                    className={isMobile ? "h-3.5 w-3.5 mr-1" : "h-4 w-4 mr-1.5"}
+                  />
+                  {isAddingToCart
+                    ? "Agregando..."
+                    : hasStock && isActive
+                    ? "Agregar"
+                    : "Agotado"}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

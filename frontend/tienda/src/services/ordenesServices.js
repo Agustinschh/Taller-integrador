@@ -36,9 +36,15 @@ export const ordenesService = {
   // Obtener detalle de una orden específica
   obtenerDetalleOrden: async (ordenId) => {
     try {
-      const response = await fetch(`${API_URL}/ordenes/ordenes/${ordenId}/detalle_orden/`, {
+      let response = await fetch(`${API_URL}/ordenes/ordenes/${ordenId}/detalle_orden/`, {
         headers: getHeaders()
       });
+      
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/ordenes/ordenes/${ordenId}/`, {
+          headers: getHeaders()
+        });
+      }
       
       if (!response.ok) {
         throw new Error('Error al obtener detalle de orden');
@@ -46,7 +52,8 @@ export const ordenesService = {
       
       return await response.json();
     } catch (error) {
-            throw error;
+      console.error('Error in obtenerDetalleOrden:', error);
+      throw error;
     }
   }
 };

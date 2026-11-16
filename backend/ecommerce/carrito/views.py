@@ -20,15 +20,24 @@ class CarritoViewSet(viewsets.ModelViewSet):
         from rest_framework_simplejwt.authentication import JWTAuthentication
         return [JWTAuthentication()]
 
+    def _get_session_key(self, request):
+        session_key = (
+            request.headers.get('X-Session-Key') or 
+            request.query_params.get('session_key') or 
+            request.data.get('session_key') if hasattr(request, 'data') and isinstance(request.data, dict) else None
+        )
+        if not session_key:
+            session_key = request.session.session_key
+        if not session_key:
+            request.session.create()
+            session_key = request.session.session_key
+        return session_key
+
     def get_queryset(self):
         if self.request.user.is_authenticated:
             return Carrito.objects.filter(usuario=self.request.user)
         else:
-
-            session_key = self.request.session.session_key
-            if not session_key:
-                self.request.session.create()
-                session_key = self.request.session.session_key
+            session_key = self._get_session_key(self.request)
             queryset = Carrito.objects.filter(session_key=session_key)
             return queryset
 
@@ -36,10 +45,8 @@ class CarritoViewSet(viewsets.ModelViewSet):
         if self.request.user.is_authenticated:
             serializer.save(usuario=self.request.user)
         else:
-
-            if not self.request.session.session_key:
-                self.request.session.create()
-            serializer.save(session_key=self.request.session.session_key)
+            session_key = self._get_session_key(self.request)
+            serializer.save(session_key=session_key)
 
     def create(self, request, *args, **kwargs):
         producto_id = request.data.get('producto')
@@ -59,13 +66,11 @@ class CarritoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-
         if cantidad > producto.stock:
             return Response(
                 {'error': f'Stock insuficiente. Disponible: {producto.stock}'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-
 
         if request.user.is_authenticated:
             carrito_item, created = Carrito.objects.get_or_create(
@@ -74,10 +79,9 @@ class CarritoViewSet(viewsets.ModelViewSet):
                 defaults={'cantidad': cantidad}
             )
         else:
-            if not request.session.session_key:
-                request.session.create()
+            session_key = self._get_session_key(request)
             carrito_item, created = Carrito.objects.get_or_create(
-                session_key=request.session.session_key,
+                session_key=session_key,
                 producto=producto,
                 defaults={'cantidad': cantidad}
             )
@@ -96,18 +100,38 @@ class CarritoViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(carrito_item)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def _sanitizar_carrito(self, queryset):
+        """
+        Solución a Carritos Fantasma:
+        1. Elimina automáticamente ítems con productos inactivos o sin stock.
+        2. Ajusta la cantidad si supera el stock real disponible.
+        """
+        for item in list(queryset.select_related('producto')):
+            if not item.producto or not item.producto.activo or item.producto.stock == 0:
+                item.delete()
+            elif item.cantidad > item.producto.stock:
+                item.cantidad = item.producto.stock
+                item.save(update_fields=['cantidad'])
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        self._sanitizar_carrito(queryset)
+        # Recargar queryset limpio
+        queryset = self.get_queryset().select_related('producto')
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get'])
     def resumen(self, request):
         queryset = self.get_queryset()
+        self._sanitizar_carrito(queryset)
+        queryset = self.get_queryset().select_related('producto')
         
         total_items = sum(item.cantidad for item in queryset)
-        
-
         total_precio = 0
         now = timezone.now()
         
         for item in queryset:
-
             try:
                 oferta_activa = item.producto.ofertas.filter(
                     activo=True,
@@ -124,7 +148,6 @@ class CarritoViewSet(viewsets.ModelViewSet):
                 total_precio += precio_unitario * item.cantidad
                 
             except Exception as e:
-
                 total_precio += float(item.producto.precio) * item.cantidad
         
         result = {

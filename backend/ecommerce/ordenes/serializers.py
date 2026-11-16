@@ -11,6 +11,9 @@ class OrdenSerializer(serializers.ModelSerializer):
     total_productos = serializers.SerializerMethodField()
     fecha_formateada = serializers.SerializerMethodField()
     metodo_entrega_display = serializers.SerializerMethodField()
+    direccion_envio = serializers.ReadOnlyField()
+    email_contacto = serializers.ReadOnlyField()
+    nombre_completo = serializers.ReadOnlyField()
     
     class Meta:
         model = Orden

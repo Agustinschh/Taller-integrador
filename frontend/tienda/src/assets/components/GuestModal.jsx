@@ -232,18 +232,17 @@ const ProductCard = ({ product }) => {
           </div>
 
           
-          <div className="p-4 flex flex-col flex-1" style={{ minHeight: '170px' }}>
+          <div className="p-3 sm:p-4 flex flex-col flex-1">
           
-            <div className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: '#8c000f', height: '16px' }}>
+            <div className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: '#8c000f', height: '16px' }}>
               {product.categoria}
             </div>
-            
             
             <h3 
               className="display font-semibold group-hover:underline transition-colors mb-2" 
               style={{ 
                 color: '#8c000f',
-                height: '48px',
+                minHeight: '38px',
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: 'vertical',
@@ -254,35 +253,13 @@ const ProductCard = ({ product }) => {
               {isMobile ? truncateToWords(product.nombre, 2) : product.nombre}
             </h3>
             
-          
-            <p 
-              className="display text-sm mb-3" 
-              style={{ 
-                color: '#f83258',
-                height: '40px',
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                lineHeight: '1.2'
-              }}
-            >
-              {product.descripcion}
-            </p>
-            
-          
-            <div className="flex-1"></div>
-            
-          
-            <div className="display flex items-center justify-center mb-3" style={{ height: '20px' }}>
+            <div className="display flex items-center justify-center mb-2" style={{ height: '20px' }}>
               <div className="text-xs" style={{ color: hasStock ? '#066803ff' : '#f83258' }}>
                 {hasStock ? `Disponible` : 'Sin stock'}
               </div>
             </div>
 
-          
-            <div className="display flex items-center justify-center gap-2 mb-6" style={{ height: '32px' }}>
+            <div className="display flex items-center justify-center gap-2 mb-3" style={{ height: '28px' }}>
               <span className="text-lg font-bold" style={{ color: isOnSale ? '#f83258' : '#8c000f' }}>
                 {formatPrice(displayPrice)}
               </span>

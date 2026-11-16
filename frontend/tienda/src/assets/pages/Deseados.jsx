@@ -156,17 +156,11 @@ const handleAddToCart = async (producto) => {
 
                     
                       <h3 
-                        className="font-semibold text-gray-900 hover:text-red-600 transition-colors line-clamp-2 cursor-pointer text-sm sm:text-base"
+                        className="font-semibold text-gray-900 hover:text-red-600 transition-colors line-clamp-2 cursor-pointer text-sm sm:text-base mb-2"
                         onClick={() => handleProductClick(producto.id)}
                       >
                         {producto.nombre}
                       </h3>
-
-                     
-                      <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">
-                        {producto.descripcion}
-                      </p>
-
                      
                       <div className="text-xs text-right">
                         <span className={hasStock ? 'text-green-600' : 'text-red-600'}>

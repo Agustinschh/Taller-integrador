@@ -7,11 +7,11 @@ class ReseñaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Reseña
-        fields = ['id', 'usuario', 'usuario_nombre', 'producto', 'calificacion', 'comentario', 'fecha']
-        read_only_fields = ['usuario', 'fecha']
+        fields = ['id', 'usuario_nombre', 'producto', 'calificacion', 'comentario', 'fecha']
+        read_only_fields = ['usuario_nombre', 'fecha']
 
     def get_usuario_nombre(self, obj):
-        return obj.usuario.username
+        return "Comprador Anónimo"
 
     def validate(self, data):
         request = self.context.get('request')

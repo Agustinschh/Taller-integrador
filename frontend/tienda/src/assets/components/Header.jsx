@@ -13,10 +13,9 @@ import gsap from 'gsap';
 
 const categories = [
   { name: 'Star Wars™', slug: 'star-wars', path: '/categoria/star-wars' },
-  { name: 'Technic', slug: 'technic', path: '/categoria/technic' },
   { name: 'Harry Potter™', slug: 'harry-potter', path: '/categoria/harry-potter' },
-  { name: 'Combos & Packs', slug: 'combos', path: '/combos' },
-  { name: 'Novedades', slug: 'novedades', path: '/TodosProductos' },
+  { name: 'Destacados', slug: 'destacados', path: '/destacados?destacados=true' },
+  { name: 'Combos', slug: 'combos', path: '/combos' },
   { name: 'Ofertas', slug: 'ofertas', path: '/TodasOfertas' }
 ];
 

@@ -50,6 +50,16 @@ const refreshAccessToken = async () => {
   }
 };
 
+// Función para obtener o generar session_key persistente de invitado
+export const getGuestSessionKey = () => {
+  let key = localStorage.getItem('guest_session_key');
+  if (!key) {
+    key = 'guest_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    localStorage.setItem('guest_session_key', key);
+  }
+  return key;
+};
+
 // Función para obtener headers con token si está autenticado
 const getHeaders = async (requireAuth = false) => {
   let token = localStorage.getItem('access_token');
@@ -66,6 +76,7 @@ const getHeaders = async (requireAuth = false) => {
   
   const headers = {
     'Content-Type': 'application/json',
+    'X-Session-Key': getGuestSessionKey(),
   };
   
   // Solo agregar Authorization si hay token válido o si es requerido
@@ -331,12 +342,13 @@ export const ordenService = {
 
   // NUEVO: Preparar pago de invitado sin crear orden (hasta que se confirme pago)
   prepararPagoInvitado: async (datosInvitado) => {
+    const sessionKey = datosInvitado.session_key || getGuestSessionKey();
     const makeRequest = async () => {
       const config = await getFetchConfig(false); // No requiere auth
       return await fetch(`${API_URL}/ordenes/ordenes/preparar_pago_invitado/`, {
         method: 'POST',
         ...config,
-        body: JSON.stringify(datosInvitado)
+        body: JSON.stringify({ ...datosInvitado, session_key: sessionKey })
       });
     };
 
@@ -366,14 +378,15 @@ export const mercadoPagoService = {
           token = await refreshAccessToken();
         } catch (error) {
           // Si falla el refresh, continuar sin token (usuario invitado)
-                    token = null;
+          token = null;
         }
       }
       
       const config = {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Session-Key': getGuestSessionKey()
         }
       };
 
@@ -398,23 +411,25 @@ export const mercadoPagoService = {
       
       return await response.json();
     } catch (error) {
-            throw error;
+      throw error;
     }
   },
 
   // NUEVO: Crear preferencia desde carrito (sin orden creada) para invitados
   crearPreferenciaDesdeCarrito: async (sessionKey) => {
+    const key = sessionKey || getGuestSessionKey();
     const makeRequest = async () => {
       const config = {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Session-Key': key
         }
       };
 
       return await fetch(`${API_URL}/pagos/pagos/crear-preferencia/`, {
         ...config,
-        body: JSON.stringify({ session_key: sessionKey })
+        body: JSON.stringify({ session_key: key })
       });
     };
 

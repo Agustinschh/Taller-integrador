@@ -239,12 +239,13 @@ const Checkout = () => {
   };
 
   const handleFinalizarCompra = async () => {
+    if (processing || (ordenCreada && ordenCreada.mercadopago_ready)) return;
     setProcessing(true);
+    setErrors({});
     
     try {
       let result;
       
-    
       const metodoEntregaGuardado = localStorage.getItem('metodo_entrega') || 'delivery';
       const costoEnvioCalculado = calcularCostoEnvio();
       const datosParaEnvio = {
@@ -259,7 +260,6 @@ const Checkout = () => {
           costo_envio: costoEnvioCalculado,
           cupon_codigo: cuponAplicado?.codigo
         });
-        
         
         const ordenId = result.orden_id || result.orden?.id;
         if (ordenId) {
@@ -283,14 +283,14 @@ const Checkout = () => {
           }
         }
       } else {
-        
+        const guestKey = localStorage.getItem('guest_session_key');
         result = await ordenService.prepararPagoInvitado({
           ...datosParaEnvio,
+          session_key: guestKey,
           cupon_codigo: cuponAplicado?.codigo
         });
         
-        
-        const sessionKey = result.session_key;
+        const sessionKey = result.session_key || guestKey;
         if (sessionKey) {
           const preferenciaResponse = await mercadoPagoService.crearPreferenciaDesdeCarrito(sessionKey);
           

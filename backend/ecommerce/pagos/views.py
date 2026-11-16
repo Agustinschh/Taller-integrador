@@ -34,6 +34,7 @@ class PagoViewSet(viewsets.ModelViewSet):
 
             from ordenes.models import Orden, OrdenProducto
             from productos.models import Producto
+            from carrito.models import Carrito
             from .models import Pago
 
             real_status = param_status
@@ -86,6 +87,12 @@ class PagoViewSet(viewsets.ModelViewSet):
 
                         orden.estado = 'pagado'
                         orden.save()
+
+                        # Limpiar carrito
+                        if orden.usuario:
+                            Carrito.objects.filter(usuario=orden.usuario).delete()
+                        if orden.session_key:
+                            Carrito.objects.filter(session_key=orden.session_key).delete()
 
                     # Actualizar o crear Pago
                     pago = Pago.objects.filter(orden=orden).first()
@@ -172,24 +179,37 @@ class PagoViewSet(viewsets.ModelViewSet):
             sdk = mercadopago.SDK(settings.MERCADOPAGO_ACCESS_TOKEN)
 
             items = []
+            productos_orden = list(orden.productos.all())
             
-            productos_orden = orden.productos.all()
+            # Calcular si hay descuento aplicado en la orden (orden.total vs suma original)
+            costo_envio = float(orden.costo_envio or 0)
+            total_orden = float(orden.total)
+            total_productos_original = sum(float(item.precio_producto) * item.cantidad for item in productos_orden)
             
+            total_productos_objetivo = max(0.0, total_orden - costo_envio)
+            factor_descuento = 1.0
+            if total_productos_original > 0 and total_productos_objetivo < total_productos_original:
+                factor_descuento = total_productos_objetivo / total_productos_original
+
             for item in productos_orden:
-                precio = float(item.precio_producto)
+                precio_unitario = float(item.precio_producto)
+                precio_final = round(precio_unitario * factor_descuento, 2)
+                
+                titulo = item.nombre_producto
+                if factor_descuento < 0.999:
+                    descuento_pct = round((1 - factor_descuento) * 100)
+                    titulo = f"{item.nombre_producto} ({descuento_pct}% OFF)"
                 
                 items.append({
-                    "title": item.nombre_producto,
+                    "title": titulo[:255],
                     "quantity": item.cantidad,
-                    "unit_price": precio,
+                    "unit_price": max(0.01, precio_final) if total_orden > 0 else 0.0,
                     "currency_id": getattr(settings, 'MERCADOPAGO_CURRENCY_ID', 'ARS'),
                     "description": item.nombre_producto[:255]
                 })
 
-            if orden.costo_envio and orden.costo_envio > 0:
-                costo_envio = float(orden.costo_envio)
+            if costo_envio > 0:
                 metodo_display = orden.get_metodo_entrega_display()
-                
                 items.append({
                     "title": f"Envío - {metodo_display}",
                     "quantity": 1,
@@ -198,12 +218,33 @@ class PagoViewSet(viewsets.ModelViewSet):
                     "description": f"Costo de envío por {metodo_display.lower()}"
                 })
 
+            # Configurar URLs de retorno dinámicas o desde settings
+            origin = request.headers.get('Origin') or request.headers.get('Referer', '').rstrip('/')
+            base_url = origin if (origin and 'http' in origin) else 'http://localhost:5173'
+            
+            success_url = getattr(settings, 'MERCADOPAGO_SUCCESS_URL', '') or f"{base_url}/pago/exitoso"
+            failure_url = getattr(settings, 'MERCADOPAGO_FAILURE_URL', '') or f"{base_url}/pago/fallido"
+            pending_url = getattr(settings, 'MERCADOPAGO_PENDING_URL', '') or f"{base_url}/pago/pendiente"
+
+            # Si viene por ngrok o túnel, adaptar las back_urls
+            if origin and ('ngrok' in origin or 'loca.lt' in origin):
+                success_url = f"{origin}/pago/exitoso"
+                failure_url = f"{origin}/pago/fallido"
+                pending_url = f"{origin}/pago/pendiente"
+
+            payer_email = None
+            payer_name = None
             if request.user.is_authenticated:
-                payer_email = request.user.email
+                payer_email = getattr(request.user, 'email', None)
                 payer_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
             else:
                 payer_email = orden.email_invitado
                 payer_name = orden.nombre_invitado
+
+            if not payer_email or '@' not in str(payer_email):
+                payer_email = "comprador_test@bloquemundo.com"
+            if not payer_name:
+                payer_name = "Cliente Tienda"
 
             preference_data = {
                 "items": items,
@@ -212,12 +253,11 @@ class PagoViewSet(viewsets.ModelViewSet):
                     "name": payer_name
                 },
                 "back_urls": {
-                    "success": settings.MERCADOPAGO_SUCCESS_URL,
-                    "failure": settings.MERCADOPAGO_FAILURE_URL,
-                    "pending": settings.MERCADOPAGO_PENDING_URL
+                    "success": success_url,
+                    "failure": failure_url,
+                    "pending": pending_url
                 },
                 "external_reference": str(orden.id),
-                "notification_url": settings.MERCADOPAGO_WEBHOOK_URL,
                 "statement_descriptor": "BLOQUE MUNDO",
                 "payment_methods": {
                     "excluded_payment_types": [],
@@ -226,48 +266,60 @@ class PagoViewSet(viewsets.ModelViewSet):
                 }
             }
 
-            if getattr(settings, 'MERCADOPAGO_SUCCESS_URL', None):
-                preference_data["auto_return"] = "approved"
+            # MercadoPago auto_return para redireccion automatica
+            preference_data["auto_return"] = "approved"
+
+            webhook_url = getattr(settings, 'MERCADOPAGO_WEBHOOK_URL', '')
+            if webhook_url and webhook_url.startswith('https://') and 'localhost' not in webhook_url and '127.0.0.1' not in webhook_url:
+                preference_data["notification_url"] = webhook_url
 
             preference_response = sdk.preference().create(preference_data)
-            preference = preference_response["response"]
+            preference = preference_response.get("response", {})
 
-            if preference_response["status"] == 201:
+            if preference_response.get("status") == 201:
                 return Response({
-                    'preference_id': preference['id'],
-                    'init_point': preference['init_point'],
+                    'preference_id': preference.get('id'),
+                    'init_point': preference.get('init_point'),
                     'sandbox_init_point': preference.get('sandbox_init_point'),
                     'orden_id': orden.id,
                     'total': float(orden.total),
                     'message': 'Preferencia creada exitosamente'
                 }, status=status.HTTP_201_CREATED)
             else:
+                error_detail = preference_response.get("response", {}) or preference_response.get("message", "Error desconocido")
+                logger.error(f"Error creando preferencia MercadoPago: {error_detail}")
                 return Response({
-                    'error': 'Error al crear la preferencia de pago'
+                    'error': f'MercadoPago Error: {error_detail}'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
+            logger.error(f"Excepción en _crear_preferencia_usuario_autenticado: {str(e)}")
             return Response({
-                'error': f'Error interno: {str(e)}'
+                'error': f'Error interno al procesar pago: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _crear_preferencia_invitado(self, request, session_key):
         try:
             from django.contrib.sessions.models import Session
+            datos_invitado = None
             try:
                 session_obj = Session.objects.get(session_key=session_key)
                 session_data = session_obj.get_decoded()
                 datos_invitado = session_data.get('datos_invitado')
-                
-                if not datos_invitado:
-                    return Response({
-                        'error': 'No se encontraron datos de invitado en la sesión'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                    
-            except Session.DoesNotExist:
-                return Response({
-                    'error': 'Sesión no encontrada'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            except Exception:
+                pass
+
+            if not datos_invitado and hasattr(request, 'session'):
+                datos_invitado = request.session.get('datos_invitado')
+
+            if not datos_invitado:
+                datos_invitado = request.data.get('datos_invitado') or {
+                    'email': request.data.get('email', 'cliente@tienda.com'),
+                    'nombre': request.data.get('nombre', 'Cliente Invitado'),
+                    'metodo_entrega': request.data.get('metodo_entrega', 'delivery'),
+                    'costo_envio': float(request.data.get('costo_envio', 0)),
+                    'total': 0
+                }
 
             from carrito.models import Carrito
             carrito_items = Carrito.objects.filter(session_key=session_key)
@@ -281,9 +333,12 @@ class PagoViewSet(viewsets.ModelViewSet):
 
             items = []
             
+            items_data = []
+            total_productos_sin_descuento = 0.0
+            from django.utils import timezone
+            now = timezone.now()
+
             for item in carrito_items:
-                from django.utils import timezone
-                now = timezone.now()
                 producto = item.producto
                 precio_unitario = producto.precio
                 
@@ -300,25 +355,46 @@ class PagoViewSet(viewsets.ModelViewSet):
                 except Exception:
                     pass
                 
-                precio = float(precio_unitario)
+                precio_f = float(precio_unitario)
+                items_data.append({
+                    'nombre': producto.nombre,
+                    'cantidad': item.cantidad,
+                    'precio_original': precio_f
+                })
+                total_productos_sin_descuento += precio_f * item.cantidad
+
+            descuento_cupon = float(datos_invitado.get('descuento_cupon', 0) or 0)
+            costo_envio = float(datos_invitado.get('costo_envio', 0) or 0)
+            total_esperado = float(datos_invitado.get('total', 0) or 0)
+
+            total_productos_objetivo = max(0.0, total_productos_sin_descuento - descuento_cupon)
+            factor_descuento = 1.0
+            if total_productos_sin_descuento > 0 and total_productos_objetivo < total_productos_sin_descuento:
+                factor_descuento = total_productos_objetivo / total_productos_sin_descuento
+
+            for item in items_data:
+                precio_final = round(item['precio_original'] * factor_descuento, 2)
+                titulo = item['nombre']
+                if factor_descuento < 0.999:
+                    descuento_pct = round((1 - factor_descuento) * 100)
+                    titulo = f"{item['nombre']} ({descuento_pct}% OFF)"
                 
                 items.append({
-                    "title": producto.nombre,
-                    "quantity": item.cantidad,
-                    "unit_price": precio,
+                    "title": titulo[:255],
+                    "quantity": item['cantidad'],
+                    "unit_price": max(0.01, precio_final) if total_esperado > 0 else 0.0,
                     "currency_id": getattr(settings, 'MERCADOPAGO_CURRENCY_ID', 'ARS'),
-                    "description": producto.nombre[:255]
+                    "description": item['nombre'][:255]
                 })
 
-            costo_envio = datos_invitado.get('costo_envio', 0)
-            if costo_envio and costo_envio > 0:
+            if costo_envio > 0:
                 metodo_entrega = datos_invitado.get('metodo_entrega', 'delivery')
                 metodo_display = 'Delivery a Domicilio' if metodo_entrega == 'delivery' else 'Retiro en Tienda'
                 
                 items.append({
                     "title": f"Envío - {metodo_display}",
                     "quantity": 1,
-                    "unit_price": float(costo_envio),
+                    "unit_price": costo_envio,
                     "currency_id": getattr(settings, 'MERCADOPAGO_CURRENCY_ID', 'ARS'),
                     "description": f"Costo de envío por {metodo_display.lower()}"
                 })
@@ -326,9 +402,31 @@ class PagoViewSet(viewsets.ModelViewSet):
             total_items = sum(item["unit_price"] * item["quantity"] for item in items)
             total_esperado = datos_invitado.get('total', 0)
 
+            # Configurar URLs de retorno dinámicas o desde settings
+            origin = request.headers.get('Origin') or request.headers.get('Referer', '').rstrip('/')
+            base_url = origin if (origin and 'http' in origin) else 'http://localhost:5173'
+            
+            success_url = getattr(settings, 'MERCADOPAGO_SUCCESS_URL', '') or f"{base_url}/pago/exitoso"
+            failure_url = getattr(settings, 'MERCADOPAGO_FAILURE_URL', '') or f"{base_url}/pago/fallido"
+            pending_url = getattr(settings, 'MERCADOPAGO_PENDING_URL', '') or f"{base_url}/pago/pendiente"
+
+            # Si viene por ngrok o túnel, adaptar las back_urls
+            if origin and ('ngrok' in origin or 'loca.lt' in origin):
+                success_url = f"{origin}/pago/exitoso"
+                failure_url = f"{origin}/pago/fallido"
+                pending_url = f"{origin}/pago/pendiente"
+
             payer_email = datos_invitado.get('email')
             payer_name = datos_invitado.get('nombre')
+            if not payer_email or '@' not in str(payer_email):
+                payer_email = "comprador_invitado@bloquemundo.com"
+            if not payer_name:
+                payer_name = "Cliente Invitado"
             
+            from ordenes.models import Orden
+            orden_invitado = Orden.objects.filter(session_key=session_key, estado='pendiente').order_by('-fecha').first()
+            ext_ref = str(orden_invitado.id) if orden_invitado else session_key
+
             preference_data = {
                 "items": items,
                 "payer": {
@@ -336,41 +434,45 @@ class PagoViewSet(viewsets.ModelViewSet):
                     "name": payer_name
                 },
                 "back_urls": {
-                    "success": settings.MERCADOPAGO_SUCCESS_URL,
-                    "failure": settings.MERCADOPAGO_FAILURE_URL,
-                    "pending": settings.MERCADOPAGO_PENDING_URL
+                    "success": success_url,
+                    "failure": failure_url,
+                    "pending": pending_url
                 },
-                "external_reference": session_key,
-                "notification_url": settings.MERCADOPAGO_WEBHOOK_URL,
+                "external_reference": ext_ref,
                 "statement_descriptor": "BLOQUE MUNDO",
                 "payment_methods": {
                     "excluded_payment_types": [],
                     "excluded_payment_methods": [],
                     "installments": 12
-                }
+                },
+                "auto_return": "approved"
             }
 
-            if getattr(settings, 'MERCADOPAGO_SUCCESS_URL', None):
-                preference_data["auto_return"] = "approved"
+            webhook_url = getattr(settings, 'MERCADOPAGO_WEBHOOK_URL', '')
+            if webhook_url and webhook_url.startswith('https://') and 'localhost' not in webhook_url and '127.0.0.1' not in webhook_url:
+                preference_data["notification_url"] = webhook_url
 
             preference_response = sdk.preference().create(preference_data)
-            preference = preference_response["response"]
+            preference = preference_response.get("response", {})
 
-            if preference_response["status"] == 201:
+            if preference_response.get("status") == 201:
                 return Response({
-                    'preference_id': preference['id'],
-                    'init_point': preference['init_point'],
+                    'preference_id': preference.get('id'),
+                    'init_point': preference.get('init_point'),
+                    'sandbox_init_point': preference.get('sandbox_init_point'),
                     'session_key': session_key,
                     'total': total_esperado,
                     'message': 'Preferencia creada exitosamente'
                 }, status=status.HTTP_201_CREATED)
             else:
+                error_detail = preference_response.get("response", {}) or preference_response.get("message", "Error desconocido")
+                logger.error(f"Error creando preferencia invitado MercadoPago: {error_detail}")
                 return Response({
-                    'error': 'Error al crear la preferencia de pago'
+                    'error': f'MercadoPago Error: {error_detail}'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
-            logger.error(f"Error al crear preferencia: {str(e)}")
+            logger.error(f"Error al crear preferencia invitado: {str(e)}")
             return Response({
                 'error': f'Error interno: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

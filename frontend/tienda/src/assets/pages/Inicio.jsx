@@ -1,4 +1,4 @@
-import Categories from "../components/Categories";
+import AgeCategories from "../components/AgeCategories";
 import ProductSlider from "../components/ProductSlider";
 import AdvertisementBanner from "../components/AdversisementBanner";
 import AdvertisementBanner2 from "../components/AdversisementBanner2";
@@ -15,7 +15,6 @@ const Inicio = () => {
   const [loadingOfertas, setLoadingOfertas] = useState(true);
 
   useEffect(() => {
-  
     const fetchProducts = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/productos/`);
@@ -27,22 +26,19 @@ const Inicio = () => {
           );
           setProducts(sortedProducts);
           setDestacados(data.filter(p => p.destacado));
-        } else {
-                  }
+        }
       } catch (error) {
-              } finally {
+      } finally {
         setLoading(false);
       }
     };
 
-    
     const fetchOfertas = async () => {
       try {
-  const response = await fetch(`${API_BASE_URL}/ofertas/`);
+        const response = await fetch(`${API_BASE_URL}/ofertas/`);
         if (response.ok) {
           const data = await response.json();
-           
-             const ofertasTransformadas = data.map(oferta => ({
+          const ofertasTransformadas = data.map(oferta => ({
             ...oferta.producto,
             precio_oferta: oferta.precio_con_descuento,
             precio_original: oferta.producto.precio,
@@ -50,10 +46,9 @@ const Inicio = () => {
             en_oferta: true
           }));
           setOfertas(ofertasTransformadas);
-        } else {
-                  }
+        }
       } catch (error) {
-              } finally {
+      } finally {
         setLoadingOfertas(false);
       }
     };
@@ -63,88 +58,93 @@ const Inicio = () => {
   }, []);
 
   return (
-  <div style={{ backgroundColor: '#ffffff', minHeight: '100vh' }}>
-      {/* HeroSection sin restricción de ancho */}
-      <div style={{ backgroundColor: '#ffffff', boxShadow: '0 2px 8px rgba(44, 62, 80, 0.08)' }}>
+    <div className="bg-white min-h-screen">
+      {/* HeroSection */}
+      <div className="bg-white shadow-xs">
         <HeroSection />
       </div>
 
-      {/* Contenido principal con contenedor responsivo */}
-      <div className="container mx-auto px-2 sm:px-4 md:px-8 lg:px-12">
-        <div style={{ padding: '2rem 0', gap: '2rem', display: 'flex', flexDirection: 'column' }}>
-          {/* Productos en oferta */}
-          {loadingOfertas ? (
-            <div className="text-center py-4" style={{ color: '#283655' }}>
-              Cargando ofertas...
-            </div>
-          ) : ofertas.length > 0 ? (
-            <div>
-              <ProductSlider
-                products={ofertas}
-                title="Productos en Oferta"
-                maxVisible={4}
-                maxTotal={8}
-              />
-            </div>
-          ) : (
-            <div className="text-center py-4" style={{ color: '#283655' }}>
-              No hay ofertas disponibles en este momento.
-            </div>
-          )}
-
-          {/* Productos Destacados */}
-          {destacados.length > 0 && (
-            <div>
-              <ProductSlider
-                products={destacados}
-                title="Productos Destacados"
-                maxVisible={4}
-                maxTotal={8}
-              />
-            </div>
-          )}
-
-          {/* Banner publicitario */}
-          <div className="hidden md:block my-6">
-            <AdvertisementBanner />
+      {/* Contenido principal con contenedor responsivo dinámico */}
+      <div className="w-full max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-6 sm:py-10 space-y-8 sm:space-y-12">
+        
+        {/* Productos en oferta */}
+        {loadingOfertas ? (
+          <div className="text-center py-8 text-slate-500 text-sm">
+            Cargando ofertas especiales...
           </div>
-
-          {/* Nuevos productos con slider */}
-          {loading ? (
-            <div className="text-center py-8" style={{ color: '#' }}>
-            Cargando productos...
-            </div>
-          ) : (
-            <div>
-              <ProductSlider 
-                products={products}
-                title="Nuevos productos"
-                maxVisible={4}
-                maxTotal={8}
-              />
-            </div>
-          )}
-
-          {/* Botón para ver todos los productos */}
-          {products.length > 0 && (
-            <div className="text-center py-0">
-              <button
-                onClick={() => window.location.href = '/TodosProductos'}
-                className="w-full sm:w-auto px-8 py-4 rounded-lg font-medium text-white transition-colors hover:opacity-90 shadow-lg"
-                style={{ backgroundColor: '#4D648D', color: '#ffffff', border: '2px solid #D0E1F9' }}
-              >
-                Ver todos los productos
-              </button>
-            </div>
-          )}
-
-          {/* Banner publicitario */}
-          <div className="hidden md:block my-6">
-            <AdvertisementBanner2/>
+        ) : ofertas.length > 0 ? (
+          <div>
+            <ProductSlider
+              products={ofertas}
+              title="🔥 Productos en Oferta"
+              maxVisible={4}
+              maxTotal={8}
+              viewMoreLink="/TodasOfertas"
+              viewMoreText="Ver todas las ofertas"
+            />
           </div>
+        ) : null}
 
-          
+        {/* Productos Destacados */}
+        {destacados.length > 0 && (
+          <div>
+            <ProductSlider
+              products={destacados}
+              title="⭐ Productos Destacados"
+              maxVisible={4}
+              maxTotal={8}
+              viewMoreLink="/destacados?destacados=true"
+              viewMoreText="Ver todos los destacados"
+            />
+          </div>
+        )}
+
+        {/* Banner publicitario */}
+        <div className="my-6 sm:my-8 overflow-hidden rounded-2xl shadow-xs">
+          <AdvertisementBanner />
         </div>
+
+        {/* Nuevos productos con slider */}
+        {loading ? (
+          <div className="text-center py-8 text-slate-500 text-sm">
+            Cargando nuevos lanzamientos...
+          </div>
+        ) : (
+          <div>
+            <ProductSlider 
+              products={products}
+              title="✨ Nuevos Productos"
+              maxVisible={4}
+              maxTotal={8}
+              viewMoreLink="/TodosProductos"
+              viewMoreText="Ver todo el catálogo"
+            />
+          </div>
+        )}
+
+        {/* Apartado de Categoría por Edad */}
+        <section className="py-2">
+          <AgeCategories />
+        </section>
+
+        {/* Botón para ver todos los productos */}
+        {products.length > 0 && (
+          <div className="text-center pt-2 pb-4">
+            <button
+              onClick={() => window.location.href = '/TodosProductos'}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-white transition-all hover:opacity-95 shadow-md hover:shadow-lg cursor-pointer text-sm sm:text-base"
+              style={{ backgroundColor: '#283655', border: '1px solid #D0E1F9' }}
+            >
+              Explorar Todo el Catálogo LEGO®
+            </button>
+          </div>
+        )}
+
+        {/* Banner publicitario 2 */}
+        <div className="my-6 sm:my-8 overflow-hidden rounded-2xl shadow-xs">
+          <AdvertisementBanner2 />
+        </div>
+        
       </div>
     </div>
   );

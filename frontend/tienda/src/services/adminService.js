@@ -164,5 +164,98 @@ export const adminService = {
       throw new Error(err.detail || err.error || 'Error al eliminar producto');
     }
     return true;
+  },
+
+  // Obtener Reporte Completo de Ventas
+  obtenerReporteVentas: async () => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_URL}/ordenes/reporte_ventas/`, {
+      method: 'GET',
+      headers
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || err.error || 'Error al obtener reporte de ventas');
+    }
+    return await response.json();
+  },
+
+  // ===== GESTIÓN DE COMBOS (ADMIN) =====
+  // Obtener todos los combos para el admin (incluyendo inactivos)
+  obtenerCombosAdmin: async (tema = '') => {
+    const headers = await getAuthHeaders();
+    let url = `${API_URL}/ofertas/combos/?admin_view=true`;
+    if (tema && tema !== 'todos') {
+      url += `&tema=${encodeURIComponent(tema)}`;
+    }
+    const response = await fetch(url, {
+      method: 'GET',
+      headers
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || err.error || 'Error al obtener combos');
+    }
+    return await response.json();
+  },
+
+  // Crear un nuevo combo
+  crearCombo: async (formData) => {
+    const token = await getAuthToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_URL}/ofertas/combos/`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const errorMsg = err.stock || err.items_input || err.detail || err.error || JSON.stringify(err);
+      throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+    }
+    return await response.json();
+  },
+
+  // Actualizar un combo existente
+  actualizarCombo: async (id, formData) => {
+    const token = await getAuthToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_URL}/ofertas/combos/${id}/`, {
+      method: 'PATCH',
+      headers,
+      body: formData
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const errorMsg = err.stock || err.items_input || err.detail || err.error || JSON.stringify(err);
+      throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+    }
+    return await response.json();
+  },
+
+  // Eliminar un combo
+  eliminarCombo: async (id) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_URL}/ofertas/combos/${id}/`, {
+      method: 'DELETE',
+      headers
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || err.error || 'Error al eliminar combo');
+    }
+    return true;
   }
 };

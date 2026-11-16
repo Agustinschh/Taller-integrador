@@ -355,10 +355,6 @@ const TodasOfertas = () => {
                           )}
                         </div>
 
-                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                          {oferta.descripcion}
-                        </p>
-
                         <div className="flex items-center justify-between">
                           <div className="space-y-1">
                             <div className="flex items-center gap-3">
