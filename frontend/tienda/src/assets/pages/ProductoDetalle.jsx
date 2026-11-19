@@ -174,6 +174,14 @@ export default function ProductoDetalle() {
     }
   };
 
+  const handleGoBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/TodosProductos');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -191,7 +199,7 @@ export default function ProductoDetalle() {
   <div className="text-center" style={{ color: '#283655' }}>
           <div className="text-lg">Producto no encontrado</div>
           <Button 
-            onClick={() => navigate('/productos')}
+            onClick={() => navigate('/TodosProductos')}
             className="mt-4"
             style={{ backgroundColor: '#283655', color: '#D0E1F9' }}
           >
@@ -208,6 +216,16 @@ export default function ProductoDetalle() {
   return (
     <div className="bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 py-8 mb-0">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={handleGoBack}
+          className="mb-4 inline-flex items-center gap-2 hover:bg-slate-200/70"
+          style={{ color: '#283655' }}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </Button>
 
         <div className="flex flex-col gap-8 bg-white rounded-lg shadow-lg p-6">
          
@@ -436,9 +454,10 @@ export default function ProductoDetalle() {
 
         
         <Button
+          type="button"
           variant="ghost"
-          onClick={() => navigate(-1)}
-          className="mb-6 flex items-center gap-4 mt-8"
+          onClick={handleGoBack}
+          className="mb-6 flex items-center gap-4 mt-8 hover:bg-slate-200/70"
           style={{ color: '#283655' }}
         >
           <ArrowLeft className="h-4 w-4" />

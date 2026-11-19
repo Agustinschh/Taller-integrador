@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.db import transaction
-from .models import Orden, OrdenProducto
+from .models import Orden
 from envios.models import Envio
 
 class EstadoOrdenFilter(admin.SimpleListFilter):
@@ -58,19 +58,10 @@ class MontoFilter(admin.SimpleListFilter):
         elif self.value() == 'premium':
             return queryset.filter(total__gte=500000)
 
-class OrdenProductoInline(admin.TabularInline):
-    model = OrdenProducto
-    extra = 0
-    readonly_fields = ['producto_id', 'nombre_producto', 'precio_producto', 'cantidad', 'subtotal']
-    can_delete = False
-    
-    def has_add_permission(self, request, obj=None):
-        return False
-
 class EnvioInline(admin.TabularInline):
     model = Envio
     extra = 0
-    fields = ['direccion', 'tipo', 'estado', 'fecha']
+    fields = ['direccion', 'costo', 'tipo', 'estado', 'fecha']
     readonly_fields = ['fecha']
     verbose_name = "Información de Envío"
     verbose_name_plural = "Gestión de Envío"
@@ -111,7 +102,7 @@ class OrdenAdmin(admin.ModelAdmin):
     
     ordering = ['-fecha']
     
-    inlines = [OrdenProductoInline, EnvioInline]
+    inlines = [EnvioInline]
     
     fieldsets = (
         ('Información de la Orden', {
@@ -133,7 +124,7 @@ class OrdenAdmin(admin.ModelAdmin):
     readonly_fields = ['fecha']
     
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('usuario').prefetch_related('envios')
+        return super().get_queryset(request).select_related('usuario')
 
     def numero_orden(self, obj):
         return format_html(

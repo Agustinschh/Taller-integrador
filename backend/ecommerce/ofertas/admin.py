@@ -14,7 +14,7 @@ class OfertaAdmin(admin.ModelAdmin):
         'fecha_fin',
         'is_active_display'
     ]
-    list_filter = ['activo', 'fecha_inicio', 'fecha_fin', 'producto__categorias']
+    list_filter = ['activo', 'fecha_inicio', 'fecha_fin', 'producto__categoria']
     search_fields = ['producto__nombre', 'descripcion']
     list_editable = ['activo', 'porcentaje_descuento']
     date_hierarchy = 'fecha_inicio'

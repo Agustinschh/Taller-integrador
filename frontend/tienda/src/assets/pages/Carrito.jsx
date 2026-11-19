@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ShoppingBag,
   Plus,
@@ -21,6 +22,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import { envioService } from "../../services/envioService";
 
 export default function Carrito() {
+  const navigate = useNavigate();
   const {
     items,
     resumen,
@@ -81,7 +83,8 @@ export default function Carrito() {
       localStorage.setItem("codigo_postal", cp);
 
       // Buscar si la opción actual existe en las opciones devueltas
-      const opcionActual = data.opciones.find(o => o.id === opcionEnvioSeleccionada) || data.opciones[0];
+      const opciones = Array.isArray(data?.opciones) ? data.opciones : [];
+      const opcionActual = opciones.find(o => o.id === opcionEnvioSeleccionada) || opciones[0];
       if (opcionActual) {
         setOpcionEnvioSeleccionada(opcionActual.id);
         setCostoEnvioActual(opcionActual.costo);
@@ -168,7 +171,11 @@ export default function Carrito() {
   };
 
   const handleGoBack = () => {
-    window.history.back();
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
   };
 
   const handleProductClick = (productId) => {
@@ -732,7 +739,7 @@ export default function Carrito() {
 
                     {/* Opciones de Envío */}
                     <div className="space-y-2.5">
-                      {(cotizacionEnvio ? cotizacionEnvio.opciones : [
+                      {(Array.isArray(cotizacionEnvio?.opciones) ? cotizacionEnvio.opciones : [
                         {
                           id: 'correo_domicilio',
                           nombre: 'Correo Argentino - A Domicilio',

@@ -137,6 +137,26 @@ export const CarritoProvider = ({ children }) => {
     }
   };
 
+  const agregarCombo = async (combo) => {
+    try {
+      const payload = combo.dbId
+        ? { combo_id: combo.dbId }
+        : {
+            precio_combo: combo.precioCombo,
+            items: (combo.items || []).map((it) => ({
+              producto_id: it.id,
+              cantidad: it.cantidadCombo || 1,
+            })),
+          };
+      await carritoService.agregarCombo(payload);
+      await cargarCarrito();
+      return { success: true };
+    } catch (error) {
+      console.error('Error agregando combo al carrito:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
   const agregarProductoInvitado = async (productoId, cantidad = 1, datosInvitado) => {
     try {
       // Guardar datos del invitado
@@ -197,6 +217,7 @@ export const CarritoProvider = ({ children }) => {
     guestData,
     cargarCarrito,
     agregarProducto,
+    agregarCombo,
     agregarProductoInvitado,
     actualizarCantidad,
     eliminarItem,

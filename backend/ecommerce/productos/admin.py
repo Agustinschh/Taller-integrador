@@ -72,14 +72,17 @@ class ProductoAdmin(admin.ModelAdmin):
         'destacado',
         StockFilter,
         PrecioFilter,
-        'categorias',
+        'categoria',
+        'edad',
+        'pelicula',
         'creado',
     ]
     
     search_fields = [
         'nombre',
         'descripcion',
-        'categorias__nombre'
+        'categoria__nombre',
+        'pelicula__nombre',
     ]
     
     list_editable = [
@@ -96,7 +99,7 @@ class ProductoAdmin(admin.ModelAdmin):
     
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('categorias')
+        return super().get_queryset(request).select_related('categoria', 'edad', 'pelicula')
     
 
     def thumbnail_display(self, obj):
@@ -111,14 +114,11 @@ class ProductoAdmin(admin.ModelAdmin):
     thumbnail_display.short_description = "Imagen"
     
     def categorias_display(self, obj):
-        categorias = obj.categorias.all()
-        if categorias:
-            badges = []
-            for categoria in categorias[:3]: 
-                badges.append(f'<span style="background: #3498db; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; margin-right: 2px;">{categoria.nombre}</span>')
-            if categorias.count() > 3:
-                badges.append(f'<span style="color: #666; font-size: 11px;">+{categorias.count() - 3} más</span>')
-            return format_html(''.join(badges))
+        if obj.categoria:
+            return format_html(
+                '<span style="background: #3498db; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px;">{}</span>',
+                obj.categoria.nombre
+            )
         return format_html('<span style="color: #95a5a6; font-style: italic;">Sin categoría</span>')
     categorias_display.short_description = "Categorías"
     
@@ -190,7 +190,9 @@ class ProductoAdmin(admin.ModelAdmin):
                 'descripcion', 
                 'precio', 
                 'stock', 
-                'categorias', 
+                'categoria',
+                'edad',
+                'pelicula',
                 'imagen', 
                 'activo',
                 'destacado'
@@ -205,8 +207,7 @@ class ProductoAdmin(admin.ModelAdmin):
     save_as = True  
     
 
-    autocomplete_fields = []  
-    filter_horizontal = ('categorias',)  
+    autocomplete_fields = []
     
 
     help_texts = {

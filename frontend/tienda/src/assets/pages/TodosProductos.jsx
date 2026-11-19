@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Filter, Grid3X3, List, Search, Star, Sparkles, Film, Baby, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -35,6 +35,7 @@ const EDADES_POPULARES = [
 ];
 
 const TodosProductos = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [productos, setProductos] = useState([]);
   const [productosPorCategoria, setProductosPorCategoria] = useState({});
@@ -140,7 +141,11 @@ const TodosProductos = () => {
   };
 
   const handleBackClick = () => {
-    window.history.back();
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
   };
 
   const formatPrice = (price) => {

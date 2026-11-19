@@ -1,92 +1,91 @@
 from django.db import models
 from usuarios.models import Usuario
 
+
 class Orden(models.Model):
     ESTADO_CHOICES = [
-        ('pendiente', 'Pendiente'),      
-        ('pagado', 'Pagado'),            
-        ('procesando', 'Procesando'),   
-        ('enviado', 'Enviado'),          
-        ('entregado', 'Entregado'),      
-        ('cancelado', 'Cancelado'),      
+        ('pendiente', 'Pendiente'),
+        ('pagado', 'Pagado'),
+        ('procesando', 'Procesando'),
+        ('enviado', 'Enviado'),
+        ('entregado', 'Entregado'),
+        ('cancelado', 'Cancelado'),
     ]
-    
+
     METODO_ENTREGA_CHOICES = [
         ('delivery', 'Delivery a Domicilio'),
         ('retiro', 'Retiro en Tienda'),
     ]
-    
-    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='ordenes', null=True, blank=True)
-    session_key = models.CharField(max_length=40, null=True, blank=True) 
-    
-    
-    email_invitado = models.EmailField(null=True, blank=True)
-    nombre_invitado = models.CharField(max_length=100, null=True, blank=True)
-    telefono_invitado = models.CharField(max_length=20, null=True, blank=True)
-    direccion_invitado = models.TextField(null=True, blank=True)
-    
-   
+
+    id = models.AutoField(primary_key=True, db_column='id_compra')
+    fecha = models.DateTimeField(auto_now_add=True, db_column='fecha')
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.CASCADE,
+        related_name='ordenes',
+        null=True,
+        blank=True,
+        db_column='id_usuario',
+    )
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_column='subtotal')
+    descuento = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_column='descuento')
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_column='total')
+    cupon = models.ForeignKey(
+        'cupones.Cupon',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ordenes',
+        db_column='id_cupon',
+    )
+
+    session_key = models.CharField(max_length=40, null=True, blank=True, db_column='session_key')
+    email_invitado = models.EmailField(null=True, blank=True, db_column='email_invitado')
+    nombre_invitado = models.CharField(max_length=100, null=True, blank=True, db_column='nombre_invitado')
+    telefono_invitado = models.CharField(max_length=20, null=True, blank=True, db_column='telefono_invitado')
+    direccion_invitado = models.TextField(null=True, blank=True, db_column='direccion_invitado')
     metodo_entrega = models.CharField(
         max_length=20,
         choices=METODO_ENTREGA_CHOICES,
         default='delivery',
-        verbose_name='Método de Entrega'
+        verbose_name='Método de Entrega',
+        db_column='metodo_entrega',
     )
-    costo_envio = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    
-    fecha = models.DateTimeField(auto_now_add=True)
+    costo_envio = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_column='costo_envio')
     estado = models.CharField(
-        max_length=30, 
-        choices=ESTADO_CHOICES, 
+        max_length=30,
+        choices=ESTADO_CHOICES,
         default='pendiente',
-        verbose_name='Estado de la Orden'
+        verbose_name='Estado de la Orden',
+        db_column='estado',
     )
-    total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = 'compra'
+        managed = False
+        ordering = ['-fecha']
 
     def __str__(self):
         if self.usuario:
-            return f"Orden #{self.id} - {self.usuario.username}"
-        return f"Orden #{self.id} - Invitado ({self.email_invitado})"
-    
-    class Meta:
-        ordering = ['-fecha']
-    
+            return f"Compra #{self.id} - {self.usuario.username}"
+        return f"Compra #{self.id} - Invitado ({self.email_invitado})"
+
     @property
     def direccion_envio(self):
-        """Obtiene la dirección de envío según el tipo de usuario"""
         if self.usuario:
-
             return self.usuario.direccion
-        else:
+        return self.direccion_invitado
 
-            return self.direccion_invitado
-    
     @property
     def email_contacto(self):
-        """Obtiene el email de contacto según el tipo de usuario"""
         if self.usuario:
             return self.usuario.email
-        else:
-            return self.email_invitado
-    
+        return self.email_invitado
+
     @property
     def nombre_completo(self):
-        """Obtiene el nombre completo según el tipo de usuario"""
         if self.usuario:
             if self.usuario.first_name and self.usuario.last_name:
                 return f"{self.usuario.first_name} {self.usuario.last_name}"
             return self.usuario.username
-        else:
-            return self.nombre_invitado
-
-class OrdenProducto(models.Model):
-    """Productos en una orden específica"""
-    orden = models.ForeignKey(Orden, on_delete=models.CASCADE, related_name='productos')
-    producto_id = models.IntegerField()  
-    nombre_producto = models.CharField(max_length=200) 
-    precio_producto = models.DecimalField(max_digits=10, decimal_places=2) 
-    cantidad = models.PositiveIntegerField()
-    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
-
-    def __str__(self):
-        return f"Orden #{self.orden.id} - {self.nombre_producto} x{self.cantidad}"
+        return self.nombre_invitado

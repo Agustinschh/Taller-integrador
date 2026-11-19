@@ -107,29 +107,15 @@ class ComboSerializer(serializers.ModelSerializer):
                         cantidad=cant
                     )
 
-            # Descontar stock de productos individuales al crear el combo con stock inicial
-            if combo.stock > 0:
-                try:
-                    combo.descontar_stock_productos(combo.stock)
-                except Exception as e:
-                    # En caso de error de stock, rollback atomic
-                    raise serializers.ValidationError({"stock": str(e)})
-
+            # El stock de los productos individuales se descuenta al concretar la compra
+            # mediante los triggers de PostgreSQL (linea_compra -> movimiento_stock -> producto.stock).
             return combo
 
     def update(self, instance, validated_data):
         items_input_raw = validated_data.pop('items_input', None)
-        new_stock = validated_data.get('stock', instance.stock)
-        old_stock = instance.stock
 
         with transaction.atomic():
-            # Si se actualizaron los items que componen el combo
             if items_input_raw is not None:
-                # 1. Devolver stock de los items anteriores
-                if old_stock > 0:
-                    instance.devolver_stock_productos(old_stock)
-
-                # 2. Reemplazar items
                 instance.items.all().delete()
                 items_list = []
                 try:
@@ -150,26 +136,8 @@ class ComboSerializer(serializers.ModelSerializer):
                             cantidad=cant
                         )
 
-                # 3. Descontar stock con los nuevos items
-                if new_stock > 0:
-                    try:
-                        instance.descontar_stock_productos(new_stock)
-                    except Exception as e:
-                        raise serializers.ValidationError({"stock": str(e)})
-            else:
-                # Si solo cambió el stock numérico del combo
-                diff = new_stock - old_stock
-                if diff > 0:
-                    try:
-                        instance.descontar_stock_productos(diff)
-                    except Exception as e:
-                        raise serializers.ValidationError({"stock": str(e)})
-                elif diff < 0:
-                    instance.devolver_stock_productos(abs(diff))
-
-            # Actualizar resto de campos
             for attr, value in validated_data.items():
                 setattr(instance, attr, value)
-            
+
             instance.save()
             return instance

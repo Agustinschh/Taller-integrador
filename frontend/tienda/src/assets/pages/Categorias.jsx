@@ -82,7 +82,11 @@ const Categorias = () => {
   };
 
   const handleBackClick = () => {
-    navigate(-1);
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
   };
 
   if (loading) {

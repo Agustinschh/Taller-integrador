@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "./ui/card.jsx";
 import { Button } from "./ui/button.jsx";
 import { Heart, ShoppingCart, Eye, Star, Tag, Film, Baby, Sparkles } from "lucide-react";
@@ -8,6 +9,7 @@ import AuthModal from "./AuthModal.jsx";
 import WishlistButton from "./WishlistButton.jsx";
 
 const ProductCard = ({ product }) => {
+  const navigate = useNavigate();
   const [isHovered, setIsHovered] = useState(false);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [isTogglingWishlist, setIsTogglingWishlist] = useState(false);
@@ -168,7 +170,7 @@ const ProductCard = ({ product }) => {
   };
 
   const handleProductClick = () => {
-    window.location.href = `/producto/${product.id}`;
+    navigate(`/producto/${product.id}`);
   };
 
   const hasStock = product.stock && product.stock > 0;

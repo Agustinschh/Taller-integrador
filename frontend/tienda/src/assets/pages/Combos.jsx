@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Sparkles, ShoppingBag, Check, ShieldCheck, Tag, Zap, Filter, Search, Grid3X3, List } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -7,6 +8,7 @@ import { useCarrito } from '../../context/CarritoContext';
 import API_BASE_URL from '../../config';
 
 const Combos = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [apiCombos, setApiCombos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,7 +19,7 @@ const Combos = () => {
   const [addingComboId, setAddingComboId] = useState(null);
   const [addedSuccessId, setAddedSuccessId] = useState(null);
 
-  const { agregarProducto } = useCarrito();
+  const { agregarCombo } = useCarrito();
 
   useEffect(() => {
     const fetchCombosAndProducts = async () => {
@@ -185,11 +187,23 @@ const Combos = () => {
 
     // Also map real database combos created by admin
     const dbCombosFormatted = apiCombos.map(combo => {
-      const items = (combo.items || []).map(it => it.producto || getProd(it.producto_id)).filter(Boolean);
-      const precioOriginalTotal = Number(combo.precio_original_total) || items.reduce((acc, item) => acc + Number(item.precio || 0), 0);
+      const items = (combo.items || [])
+        .map(it => {
+          const prod = it.producto || getProd(it.producto_id);
+          return prod ? { ...prod, cantidadCombo: Number(it.cantidad || 1) } : null;
+        })
+        .filter(Boolean);
+      const precioOriginalTotal = Number(combo.precio_original_total) || items.reduce((acc, item) => acc + Number(item.precio || 0) * (item.cantidadCombo || 1), 0);
       const precioCombo = Number(combo.precio);
       const ahorroTotal = Math.max(0, precioOriginalTotal - precioCombo);
       const descuentoPorcentaje = combo.porcentaje_ahorro || (precioOriginalTotal > 0 ? Math.round((ahorroTotal / precioOriginalTotal) * 100) : 0);
+
+      // Stock efectivo del combo segun el stock real de los productos incluidos
+      const stockPorProductos = items.length > 0
+        ? Math.min(...items.map(it => Math.floor(Number(it.stock || 0) / (it.cantidadCombo || 1))))
+        : 0;
+      const stockConfigurado = Number(combo.stock || 0);
+      const stockEfectivo = stockConfigurado > 0 ? Math.min(stockConfigurado, stockPorProductos) : stockPorProductos;
 
       return {
         id: `db-combo-${combo.id}`,
@@ -205,8 +219,8 @@ const Combos = () => {
         precioOriginalTotal,
         precioCombo,
         ahorroTotal,
-        stock: combo.stock,
-        stockDisponible: Number(combo.stock) > 0,
+        stock: stockEfectivo,
+        stockDisponible: stockEfectivo > 0,
         destacado: combo.destacado
       };
     });
@@ -248,13 +262,14 @@ const Combos = () => {
     }
   });
 
-  // Handle adding combo to cart
+  // Handle adding combo to cart with the exact combo price
   const handleAddComboToCart = async (combo) => {
     setAddingComboId(combo.id);
     try {
-      // Add each item of the combo
-      for (const item of combo.items) {
-        await agregarProducto(item.id, 1);
+      const res = await agregarCombo(combo);
+      if (res && !res.success) {
+        alert(res.error || 'No se pudo agregar el combo al carrito (stock insuficiente).');
+        return;
       }
       setAddedSuccessId(combo.id);
       setTimeout(() => {
@@ -264,6 +279,14 @@ const Combos = () => {
       console.error('Error adding combo to cart:', err);
     } finally {
       setAddingComboId(null);
+    }
+  };
+
+  const handleGoBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/');
     }
   };
 
@@ -282,7 +305,7 @@ const Combos = () => {
         <div className="max-w-7xl mx-auto relative z-10">
           <Button
             variant="ghost"
-            onClick={() => window.history.back()}
+            onClick={handleGoBack}
             className="mb-6 inline-flex items-center gap-2 text-slate-200 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl backdrop-blur-sm"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -502,7 +525,7 @@ const Combos = () => {
                             <div 
                               key={item.id || idx}
                               className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs cursor-pointer hover:border-blue-300 transition-colors"
-                              onClick={() => window.location.href = `/producto/${item.id}`}
+                              onClick={() => navigate(`/producto/${item.id}`)}
                             >
                               <div className="w-12 h-12 bg-slate-50 p-1 rounded-md border border-slate-100 flex items-center justify-center flex-shrink-0">
                                 <img 

@@ -32,8 +32,7 @@ class PagoViewSet(viewsets.ModelViewSet):
             if not payment_id and not external_reference:
                 return Response({'error': 'Se requiere payment_id o external_reference'}, status=status.HTTP_400_BAD_REQUEST)
 
-            from ordenes.models import Orden, OrdenProducto
-            from productos.models import Producto
+            from ordenes.models import Orden
             from carrito.models import Carrito
             from .models import Pago
 
@@ -73,22 +72,11 @@ class PagoViewSet(viewsets.ModelViewSet):
             if orden:
                 if real_status == 'approved' or param_status == 'approved':
                     if orden.estado != 'pagado':
-                        # Descontar stock
-                        for item in orden.productos.all():
-                            try:
-                                prod = Producto.objects.get(id=item.producto_id)
-                                if prod.stock >= item.cantidad:
-                                    prod.stock -= item.cantidad
-                                else:
-                                    prod.stock = 0
-                                prod.save()
-                            except Producto.DoesNotExist:
-                                pass
-
+                        # El stock ya fue descontado por Trigger 2 -> Trigger 1 al crear linea_compra
                         orden.estado = 'pagado'
                         orden.save()
 
-                        # Limpiar carrito
+                        # Limpiar carrito (ON DELETE CASCADE borra linea_carrito)
                         if orden.usuario:
                             Carrito.objects.filter(usuario=orden.usuario).delete()
                         if orden.session_key:
@@ -100,17 +88,15 @@ class PagoViewSet(viewsets.ModelViewSet):
                         pago = Pago.objects.create(
                             orden=orden,
                             monto=orden.total,
-                            estado='completado',
+                            estado='APROBADO',
                             payment_id=payment_id or '',
-                            payment_method=payment_data.get('payment_method_id', 'mercadopago'),
+                            payment_method='MERCADOPAGO',
                             payment_type=payment_data.get('payment_type_id', 'account_money')
                         )
                     else:
-                        pago.estado = 'completado'
+                        pago.estado = 'APROBADO'
                         if payment_id:
                             pago.payment_id = str(payment_id)
-                        if payment_data.get('payment_method_id'):
-                            pago.payment_method = payment_data.get('payment_method_id')
                         pago.save()
 
                     return Response({
@@ -125,7 +111,8 @@ class PagoViewSet(viewsets.ModelViewSet):
                     orden.save()
                     pago = Pago.objects.filter(orden=orden).first()
                     if pago:
-                        pago.estado = 'rechazado'
+                        # Trigger 3 repone stock automaticamente al pasar estado_pago a 'CANCELADO'
+                        pago.estado = 'CANCELADO'
                         pago.save()
                     return Response({
                         'status': real_status,
@@ -178,13 +165,14 @@ class PagoViewSet(viewsets.ModelViewSet):
 
             sdk = mercadopago.SDK(settings.MERCADOPAGO_ACCESS_TOKEN)
 
+            from ordenes.serializers import obtener_lineas_compra
             items = []
-            productos_orden = list(orden.productos.all())
+            productos_orden = obtener_lineas_compra(orden.id)
             
             # Calcular si hay descuento aplicado en la orden (orden.total vs suma original)
             costo_envio = float(orden.costo_envio or 0)
             total_orden = float(orden.total)
-            total_productos_original = sum(float(item.precio_producto) * item.cantidad for item in productos_orden)
+            total_productos_original = sum(float(item['precio_producto']) * item['cantidad'] for item in productos_orden)
             
             total_productos_objetivo = max(0.0, total_orden - costo_envio)
             factor_descuento = 1.0
@@ -192,20 +180,20 @@ class PagoViewSet(viewsets.ModelViewSet):
                 factor_descuento = total_productos_objetivo / total_productos_original
 
             for item in productos_orden:
-                precio_unitario = float(item.precio_producto)
+                precio_unitario = float(item['precio_producto'])
                 precio_final = round(precio_unitario * factor_descuento, 2)
                 
-                titulo = item.nombre_producto
+                titulo = item['nombre_producto']
                 if factor_descuento < 0.999:
                     descuento_pct = round((1 - factor_descuento) * 100)
-                    titulo = f"{item.nombre_producto} ({descuento_pct}% OFF)"
+                    titulo = f"{item['nombre_producto']} ({descuento_pct}% OFF)"
                 
                 items.append({
                     "title": titulo[:255],
-                    "quantity": item.cantidad,
+                    "quantity": item['cantidad'],
                     "unit_price": max(0.01, precio_final) if total_orden > 0 else 0.0,
                     "currency_id": getattr(settings, 'MERCADOPAGO_CURRENCY_ID', 'ARS'),
-                    "description": item.nombre_producto[:255]
+                    "description": item['nombre_producto'][:255]
                 })
 
             if costo_envio > 0:
@@ -266,8 +254,9 @@ class PagoViewSet(viewsets.ModelViewSet):
                 }
             }
 
-            # MercadoPago auto_return para redireccion automatica
-            preference_data["auto_return"] = "approved"
+            # MercadoPago solo acepta auto_return cuando back_urls.success es una URL pública HTTPS (no localhost)
+            if success_url.startswith('https://') and 'localhost' not in success_url and '127.0.0.1' not in success_url:
+                preference_data["auto_return"] = "approved"
 
             webhook_url = getattr(settings, 'MERCADOPAGO_WEBHOOK_URL', '')
             if webhook_url and webhook_url.startswith('https://') and 'localhost' not in webhook_url and '127.0.0.1' not in webhook_url:
@@ -322,46 +311,39 @@ class PagoViewSet(viewsets.ModelViewSet):
                 }
 
             from carrito.models import Carrito
-            carrito_items = Carrito.objects.filter(session_key=session_key)
-            
-            if not carrito_items.exists():
-                return Response({
-                    'error': 'El carrito está vacío'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            from productos.models import Producto
+            from django.db import connection
+            carrito_obj = Carrito.objects.filter(session_key=session_key).first()
+            if not carrito_obj:
+                return Response({'error': 'El carrito está vacío'}, status=status.HTTP_400_BAD_REQUEST)
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id_producto, cantidad, subtotal FROM linea_carrito WHERE id_carrito = %s",
+                    [carrito_obj.id],
+                )
+                lineas_guest = cursor.fetchall()
+
+            if not lineas_guest:
+                return Response({'error': 'El carrito está vacío'}, status=status.HTTP_400_BAD_REQUEST)
 
             sdk = mercadopago.SDK(settings.MERCADOPAGO_ACCESS_TOKEN)
 
             items = []
-            
             items_data = []
             total_productos_sin_descuento = 0.0
             from django.utils import timezone
             now = timezone.now()
 
-            for item in carrito_items:
-                producto = item.producto
-                precio_unitario = producto.precio
-                
-                try:
-                    oferta_activa = producto.ofertas.filter(
-                        activo=True,
-                        fecha_inicio__lte=now
-                    ).filter(
-                        models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
-                    ).first()
-                    
-                    if oferta_activa:
-                        precio_unitario = oferta_activa.precio_con_descuento
-                except Exception:
-                    pass
-                
-                precio_f = float(precio_unitario)
+            for prod_id, cant, sub in lineas_guest:
+                producto = Producto.objects.get(id=prod_id)
+                precio_f = float(sub) / float(cant) if cant else float(producto.precio)
                 items_data.append({
                     'nombre': producto.nombre,
-                    'cantidad': item.cantidad,
+                    'cantidad': cant,
                     'precio_original': precio_f
                 })
-                total_productos_sin_descuento += precio_f * item.cantidad
+                total_productos_sin_descuento += precio_f * cant
 
             descuento_cupon = float(datos_invitado.get('descuento_cupon', 0) or 0)
             costo_envio = float(datos_invitado.get('costo_envio', 0) or 0)
@@ -444,9 +426,11 @@ class PagoViewSet(viewsets.ModelViewSet):
                     "excluded_payment_types": [],
                     "excluded_payment_methods": [],
                     "installments": 12
-                },
-                "auto_return": "approved"
+                }
             }
+
+            if success_url.startswith('https://') and 'localhost' not in success_url and '127.0.0.1' not in success_url:
+                preference_data["auto_return"] = "approved"
 
             webhook_url = getattr(settings, 'MERCADOPAGO_WEBHOOK_URL', '')
             if webhook_url and webhook_url.startswith('https://') and 'localhost' not in webhook_url and '127.0.0.1' not in webhook_url:
@@ -480,8 +464,7 @@ class PagoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='webhook', permission_classes=[permissions.AllowAny])
     def webhook(self, request):
         try:
-            from ordenes.models import OrdenProducto, Orden
-            from productos.models import Producto
+            from ordenes.models import Orden
             from carrito.models import Carrito
             from django.contrib.sessions.models import Session
             from django.utils import timezone
@@ -530,27 +513,15 @@ class PagoViewSet(viewsets.ModelViewSet):
         
         if payment_status == 'approved':
             if orden.estado == 'pendiente':
-                from ordenes.models import OrdenProducto
-                from productos.models import Producto
-                
-                productos_orden = OrdenProducto.objects.filter(orden=orden)
-                for item in productos_orden:
-                    try:
-                        producto = Producto.objects.get(id=item.producto_id)
-                        producto.stock -= item.cantidad
-                        producto.save()
-                    except Producto.DoesNotExist:
-                        pass
-                
                 orden.estado = 'pagado'
                 orden.save()
                 
                 from .models import Pago
                 pago = Pago.objects.filter(orden=orden).first()
                 if pago:
-                    pago.estado = 'completado'
+                    pago.estado = 'APROBADO'
                     pago.payment_id = payment_id
-                    pago.payment_method = payment.get('payment_method_id')
+                    pago.payment_method = 'MERCADOPAGO'
                     pago.payment_type = payment.get('payment_type_id')
                     pago.save()
 
@@ -562,7 +533,8 @@ class PagoViewSet(viewsets.ModelViewSet):
                 from .models import Pago
                 pago = Pago.objects.filter(orden=orden).first()
                 if pago:
-                    pago.estado = 'rechazado'
+                    # Trigger 3 repone stock automaticamente al pasar estado_pago a 'CANCELADO'
+                    pago.estado = 'CANCELADO'
                     pago.payment_id = payment_id
                     pago.save()
 
@@ -592,12 +564,22 @@ class PagoViewSet(viewsets.ModelViewSet):
                 return Response({'status': 'ok'}, status=status.HTTP_200_OK)
             
             from carrito.models import Carrito
-            carrito_items = Carrito.objects.filter(session_key=session_key)
-            
-            if not carrito_items.exists():
+            from django.db import connection
+            carrito_obj = Carrito.objects.filter(session_key=session_key).first()
+            if not carrito_obj:
                 return Response({'status': 'ok'}, status=status.HTTP_200_OK)
-            
-            from ordenes.models import Orden, OrdenProducto
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id_producto, cantidad, subtotal FROM linea_carrito WHERE id_carrito = %s",
+                    [carrito_obj.id],
+                )
+                lineas_guest = cursor.fetchall()
+
+            if not lineas_guest:
+                return Response({'status': 'ok'}, status=status.HTTP_200_OK)
+
+            from ordenes.models import Orden
             orden = Orden.objects.create(
                 session_key=session_key,
                 email_invitado=datos_invitado['email'],
@@ -606,57 +588,33 @@ class PagoViewSet(viewsets.ModelViewSet):
                 direccion_invitado=datos_invitado['direccion'],
                 metodo_entrega=datos_invitado['metodo_entrega'],
                 costo_envio=datos_invitado['costo_envio'],
+                subtotal=datos_invitado.get('total_productos', datos_invitado['total']),
+                descuento=datos_invitado.get('descuento_cupon', 0),
                 total=datos_invitado['total'],
                 estado='pagado'
             )
-            
-            from django.utils import timezone
-            from django.db import models
-            now = timezone.now()
-            for item in carrito_items:
-                if item.cantidad > item.producto.stock:
-                    continue
-                
-                producto = item.producto
-                precio_unitario = producto.precio
-                
-                try:
-                    oferta_activa = producto.ofertas.filter(
-                        activo=True,
-                        fecha_inicio__lte=now
-                    ).filter(
-                        models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
-                    ).first()
-                    
-                    if oferta_activa:
-                        precio_unitario = oferta_activa.precio_con_descuento
-                except Exception:
-                    pass
-                
-                subtotal = precio_unitario * item.cantidad
-                
-                OrdenProducto.objects.create(
-                    orden=orden,
-                    producto_id=producto.id,
-                    nombre_producto=producto.nombre,
-                    precio_producto=precio_unitario,
-                    cantidad=item.cantidad,
-                    subtotal=subtotal
-                )
-                
-                producto.stock -= item.cantidad
-                producto.save()
-            
+
+            with connection.cursor() as cursor:
+                for prod_id, cant, sub in lineas_guest:
+                    precio_unit = float(sub) / float(cant) if cant else 0
+                    cursor.execute(
+                        """
+                        INSERT INTO linea_compra (id_compra, id_producto, cantidad, precio_unitario, subtotal)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        [orden.id, prod_id, cant, precio_unit, sub],
+                    )
+
             from .models import Pago
-            pago = Pago.objects.create(
+            Pago.objects.create(
                 orden=orden,
                 monto=orden.total,
-                estado='completado',
+                estado='APROBADO',
                 payment_id=payment_id,
-                payment_method=payment.get('payment_method_id'),
+                payment_method='MERCADOPAGO',
                 payment_type=payment.get('payment_type_id')
             )
-            
-            carrito_items.delete()
+
+            carrito_obj.delete()
         
         return Response({'status': 'ok'}, status=status.HTTP_200_OK)

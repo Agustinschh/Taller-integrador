@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Filter, Grid3X3, List, Search, Tag, Clock, Flame } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -7,6 +8,7 @@ import ProductCard from '../components/ProductCard';
 import API_BASE_URL from '../../config';
 
 const TodasOfertas = () => {
+  const navigate = useNavigate();
   const [ofertas, setOfertas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -89,7 +91,11 @@ const TodasOfertas = () => {
   };
 
   const handleBackClick = () => {
-    window.history.back();
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
   };
 
   const formatPrice = (price) => {

@@ -18,7 +18,7 @@ class OfertasActivasListView(generics.ListAPIView):
             fecha_inicio__lte=now
         ).filter(
             models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
-        ).select_related('producto').prefetch_related('producto__categorias')
+        ).select_related('producto', 'producto__categoria', 'producto__edad', 'producto__pelicula')
 
 
 class OfertaDetailView(generics.RetrieveAPIView):
@@ -42,12 +42,16 @@ class ComboListView(generics.ListCreateAPIView):
         if (self.request.user and self.request.user.is_staff) or is_admin_req:
             queryset = Combo.objects.all().prefetch_related(
                 'items__producto',
-                'items__producto__categorias'
+                'items__producto__categoria',
+                'items__producto__edad',
+                'items__producto__pelicula',
             )
         else:
             queryset = Combo.objects.filter(activo=True).prefetch_related(
                 'items__producto',
-                'items__producto__categorias'
+                'items__producto__categoria',
+                'items__producto__edad',
+                'items__producto__pelicula',
             )
         
         tema = self.request.query_params.get('tema')
@@ -73,13 +77,10 @@ class ComboDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return Combo.objects.all().prefetch_related(
             'items__producto',
-            'items__producto__categorias'
+            'items__producto__categoria',
+            'items__producto__edad',
+            'items__producto__pelicula',
         )
 
     def perform_destroy(self, instance):
-        if instance.stock > 0:
-            try:
-                instance.devolver_stock_productos(instance.stock)
-            except Exception:
-                pass
         instance.delete()

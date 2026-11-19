@@ -87,13 +87,7 @@ El backend correrá en `http://localhost:8000`
 
 ```bash
 # Entrar a la carpeta del frontend (en una nueva terminal)
-cd frontend/tienda
-
-# Instalar dependencias
-npm install
-
-# Iniciar el servidor de desarrollo
-npm run dev
+ñ
 ```
 El frontend correrá en `http://localhost:5173`
 

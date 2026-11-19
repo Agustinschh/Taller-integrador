@@ -177,7 +177,29 @@ export const carritoService = {
     } catch (error) {
       throw error;
     }
-  },  // Actualizar cantidad (no requiere autenticación - permite usuarios anónimos)
+  },
+
+  // Agregar combo al carrito respetando el precio especial del combo
+  agregarCombo: async (payload) => {
+    const makeRequest = async () => {
+      const config = await getFetchConfig(false);
+      return await fetch(`${API_URL}/carrito/agregar_combo/`, {
+        method: 'POST',
+        ...config,
+        body: JSON.stringify(payload)
+      });
+    };
+
+    try {
+      const response = await makeRequest();
+      const handledResponse = await handleResponse(response, makeRequest, false);
+      return await handledResponse.json();
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Actualizar cantidad (no requiere autenticación - permite usuarios anónimos)
   actualizarCantidad: async (itemId, cantidad) => {
     const makeRequest = async () => {
       const config = await getFetchConfig(false); // No requiere auth

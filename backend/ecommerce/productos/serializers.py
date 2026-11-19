@@ -1,22 +1,33 @@
 from rest_framework import serializers
-from .models import Producto
+from .models import Producto, Pelicula, Edad
 from categorias.models import Categoria
 from django.utils import timezone
 from django.db import models
+
 
 class CategoriaSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Categoria
         fields = ['id', 'nombre']
 
+
 class ProductoSerializer(serializers.ModelSerializer):
-    categorias = CategoriaSimpleSerializer(many=True, read_only=True)
-    categoria_ids = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Categoria.objects.all(), source='categorias', required=False, write_only=True
+    categorias = serializers.SerializerMethodField()
+    categoria_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, write_only=True
+    )
+    categoria_id = serializers.PrimaryKeyRelatedField(
+        queryset=Categoria.objects.all(), source='categoria', required=False, write_only=True
     )
     categoria = serializers.SerializerMethodField()
     edad = serializers.SerializerMethodField()
+    edad_id = serializers.PrimaryKeyRelatedField(
+        queryset=Edad.objects.all(), source='edad', required=False, allow_null=True, write_only=True
+    )
     pelicula_saga = serializers.SerializerMethodField()
+    pelicula_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pelicula.objects.all(), source='pelicula', required=False, allow_null=True, write_only=True
+    )
     precio_oferta = serializers.SerializerMethodField()
     en_oferta = serializers.SerializerMethodField()
     porcentaje_descuento = serializers.SerializerMethodField()
@@ -24,8 +35,14 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Producto
-        fields = '__all__'
-    
+        fields = [
+            'id', 'nombre', 'descripcion', 'precio', 'stock', 'destacado',
+            'categoria', 'categoria_id', 'categorias', 'categoria_ids',
+            'edad', 'edad_id', 'pelicula_saga', 'pelicula_id',
+            'imagen', 'activo', 'creado',
+            'precio_oferta', 'en_oferta', 'porcentaje_descuento',
+        ]
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if instance.imagen:
@@ -42,79 +59,83 @@ class ProductoSerializer(serializers.ModelSerializer):
             data['imagen'] = None
         return data
 
+    def get_categorias(self, obj):
+        res = []
+        if obj.categoria:
+            res.append({'id': obj.categoria.id, 'nombre': obj.categoria.nombre})
+        if obj.edad:
+            res.append({'id': obj.edad.id, 'nombre': obj.edad.rango})
+        return res
+
     def get_categoria(self, obj):
-        cats = [c.nombre for c in obj.categorias.all() if 'año' not in c.nombre.lower() and 'adulto' not in c.nombre.lower()]
-        return cats[0] if cats else 'Colección'
+        return obj.categoria.nombre if obj.categoria else 'Colección'
 
     def get_edad(self, obj):
-        for cat in obj.categorias.all():
-            nombre = cat.nombre.lower()
-            if 'año' in nombre or 'años' in nombre or 'adulto' in nombre:
-                return cat.nombre
-        return 'Todas las edades'
+        return obj.edad.rango if obj.edad else 'Todas las edades'
 
     def get_pelicula_saga(self, obj):
-        cats = [c.nombre for c in obj.categorias.all() if 'año' not in c.nombre.lower() and 'adulto' not in c.nombre.lower()]
-        all_text = ' '.join(cats + [obj.nombre]).lower()
-        if 'star wars' in all_text: return 'Star Wars'
-        if 'harry potter' in all_text or 'fantastic beasts' in all_text or 'hogwarts' in all_text: return 'Harry Potter'
-        if 'marvel' in all_text or 'infinity saga' in all_text or 'spider-man' in all_text or 'spiderman' in all_text or 'iron man' in all_text or 'avengers' in all_text: return 'Marvel'
-        if 'batman' in all_text or 'dc comics' in all_text or 'super heroes dc' in all_text or 'superman' in all_text: return 'DC / Batman'
-        if 'jurassic' in all_text: return 'Jurassic World'
-        if 'mario' in all_text: return 'Super Mario'
-        if 'lord of the rings' in all_text or 'hobbit' in all_text or 'señor de los anillos' in all_text: return 'El Señor de los Anillos'
-        if 'disney' in all_text or 'frozen' in all_text or 'toy story' in all_text or 'mickey' in all_text: return 'Disney'
-        if 'minecraft' in all_text: return 'Minecraft'
-        if 'ninjago' in all_text: return 'Ninjago'
-        if 'pok' in all_text: return 'Pokémon'
-        if 'fortnite' in all_text: return 'Fortnite'
-        if 'one piece' in all_text: return 'One Piece'
-        if 'speed champions' in all_text: return 'Speed Champions'
-        if 'technic' in all_text: return 'Technic'
-        if 'friends' in all_text: return 'Friends'
-        if 'city' in all_text or 'police' in all_text or 'town' in all_text: return 'City'
-        if 'animal crossing' in all_text: return 'Animal Crossing'
-        if cats: return cats[0]
-        return 'Colección Clásica'
-    
+        if obj.pelicula:
+            return obj.pelicula.nombre
+        return obj.categoria.nombre if obj.categoria else 'Colección Clásica'
+
     def get_en_oferta(self, obj):
-        """Verifica si el producto tiene una oferta activa"""
         now = timezone.now()
-        oferta = obj.ofertas.filter(
+        return obj.ofertas.filter(
             activo=True,
-            fecha_inicio__lte=now
+            fecha_inicio__lte=now,
         ).filter(
             models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
-        ).first()
-        return oferta is not None
-    
+        ).exists()
+
     def get_precio_oferta(self, obj):
-        """Calcula el precio con oferta si existe una oferta activa"""
         now = timezone.now()
         oferta = obj.ofertas.filter(
             activo=True,
-            fecha_inicio__lte=now
+            fecha_inicio__lte=now,
         ).filter(
             models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
         ).first()
-        
         if oferta:
             return oferta.precio_con_descuento
         return None
-    
+
     def get_porcentaje_descuento(self, obj):
-        """Devuelve el porcentaje de descuento si existe una oferta activa"""
         now = timezone.now()
         oferta = obj.ofertas.filter(
             activo=True,
-            fecha_inicio__lte=now
+            fecha_inicio__lte=now,
         ).filter(
             models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=now)
         ).first()
-        
         if oferta:
             return oferta.porcentaje_descuento
         return None
+
+    def _resolve_categoria(self, validated_data):
+        cat_ids = validated_data.pop('categoria_ids', None)
+        if 'categoria' not in validated_data or validated_data['categoria'] is None:
+            if cat_ids:
+                cat = Categoria.objects.filter(id__in=cat_ids).first()
+                if cat:
+                    validated_data['categoria'] = cat
+            if 'categoria' not in validated_data or validated_data['categoria'] is None:
+                default_cat, _ = Categoria.objects.get_or_create(
+                    nombre='Colección',
+                    defaults={'descripcion': 'Categoría general', 'activo': True},
+                )
+                validated_data['categoria'] = default_cat
+
+    def create(self, validated_data):
+        self._resolve_categoria(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        cat_ids = validated_data.pop('categoria_ids', None)
+        if cat_ids and 'categoria' not in validated_data:
+            cat = Categoria.objects.filter(id__in=cat_ids).first()
+            if cat:
+                validated_data['categoria'] = cat
+        return super().update(instance, validated_data)
 
     def validate(self, data):
         activo = data.get('activo', getattr(self.instance, 'activo', True) if self.instance else True)
