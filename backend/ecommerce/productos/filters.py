@@ -29,6 +29,7 @@ class ProductoFilter(django_filters.FilterSet):
         return queryset.filter(
             models.Q(categoria__nombre__icontains=val)
             | models.Q(pelicula__nombre__icontains=val)
+            | models.Q(edad__rango__icontains=val)
             | models.Q(nombre__icontains=val)
         ).distinct()
 

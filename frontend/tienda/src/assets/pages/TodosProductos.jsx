@@ -56,6 +56,14 @@ const TodosProductos = () => {
 
   const [filteredProductos, setFilteredProductos] = useState({});
 
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') || '');
+    setSoloDestacados(searchParams.get('destacados') === 'true');
+    setSagaFiltro(searchParams.get('saga') || searchParams.get('pelicula') || '');
+    setEdadFiltro(searchParams.get('edad') || '');
+    setCategoriaSeleccionada(searchParams.get('categoria') || '');
+  }, [searchParams]);
+
   const fetchProductos = async () => {
     setLoading(true);
     try {

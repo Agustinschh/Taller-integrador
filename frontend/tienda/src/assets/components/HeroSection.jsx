@@ -463,12 +463,17 @@ export function HeroSection() {
                   </Badge>
                 </div>
 
-                <div className="w-full h-80 sm:h-96 flex items-center justify-center p-4">
-                  <ImageWithFallback
-                    src={slides[current].image}
-                    alt={`Set ${current + 1}`}
-                    className="w-full h-full object-contain filter drop-shadow-2xl transition-transform duration-700 ease-out group-hover:scale-105"
-                  />
+                <div className="relative w-full h-80 sm:h-96 flex items-center justify-center p-4">
+                  {slides.map((slide, idx) => (
+                    <ImageWithFallback
+                      key={idx}
+                      src={slide.image}
+                      alt={`Set ${idx + 1}`}
+                      className={`absolute inset-0 p-4 w-full h-full object-contain filter drop-shadow-2xl transition-all duration-700 ease-out group-hover:scale-105 ${
+                        current === idx ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+                      }`}
+                    />
+                  ))}
                 </div>
 
                 {/* Bottom interactive indicator */}

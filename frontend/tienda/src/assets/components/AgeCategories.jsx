@@ -69,7 +69,7 @@ export default function AgeCategories() {
   const navigate = useNavigate();
 
   const handleSelectAge = (range) => {
-    navigate(`/TodosProductos?categoria=${encodeURIComponent(range.range)}`);
+    navigate(`/TodosProductos?edad=${encodeURIComponent(range.range)}`);
   };
 
   return (
