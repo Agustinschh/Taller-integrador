@@ -56,39 +56,42 @@ El sistema guía al comprador a través de un proceso fluido, rápido y transpar
 ### Detalle de cada paso:
 
 1. **Exploración y Selección:**
-   - El cliente busca productos por categoría, revisa combos promocionales o mira las ofertas activas.
-   - Puede ver opiniones, fotos y calificaciones de otros compradores antes de decidir.
+   - El cliente busca productos por categoría, **rango etario** (5 etapas desde `0 - 3 años` hasta `18+ Adultos`), **saga/película** (Star Wars, Harry Potter, Marvel, Technic, etc.), revisa combos promocionales o mira las ofertas activas.
+   - Puede ver opiniones verificadas (solo de compradores reales), fotos y calificaciones de otros compradores antes de decidir.
 
 2. **Carga al Carrito y Lista de Deseos:**
-   - Agrega artículos al carrito. El carrito recuerda los productos incluso si el cliente cierra la ventana y regresa días después.
+   - Agrega artículos individuales o **combos con precio promocional cerrado** al carrito. El carrito recuerda los productos incluso si el cliente cierra la ventana y regresa días después.
+   - **Protección contra carritos fantasma:** El carrito nunca bloquea ni descuenta stock mientras el cliente navega; además, limpia automáticamente productos pausados o agotados y ajusta cantidades al stock real disponible.
    - Si no puede comprar de inmediato, puede guardar artículos en su "Lista de Deseos" (*Wishlist*).
 
 3. **Cálculo de Envío en Tiempo Real:**
-   - En el Checkout (caja), el cliente escribe su Código Postal.
-   - El sistema calcula de forma instantánea el costo de envío a su localidad (desde el centro de distribución en Entre Ríos, CP 3260) y le presenta 3 opciones:
+   - En el Checkout (caja) o en el Carrito, el cliente escribe su Código Postal.
+   - El sistema calcula de forma instantánea el costo de envío directamente desde la función de **PostgreSQL** (`calcular_costo_envio`) combinada con las zonas de Correo Argentino (desde el centro de distribución en Entre Ríos, CP 3260) y presenta 3 opciones:
      - **Envío a Domicilio:** Directo a la puerta.
      - **Retiro en Sucursal de Correo:** Opción más económica.
      - **Retiro en Local:** Sin costo para clientes cercanos.
-   - **Beneficio Automático:** Si el carrito supera el monto mínimo fijado (por ejemplo, $50.000 ARS), el sistema bonifica el flete como **Envío Gratis**.
+   - **Beneficio Automático:** Si el carrito supera el monto mínimo fijado ($50.000 ARS), el sistema bonifica el flete como **Envío Gratis**.
 
 4. **Aplicación de Cupones:**
-   - Si el cliente posee un cupón de marketing (ej: `VERANO20`), lo ingresa y el sistema valida vigencia, monto mínimo y aplica el descuento en el acto.
+   - Si el cliente posee un cupón de marketing (ej: `VERANO20`), lo ingresa y el sistema valida vigencia, uso previo y fecha de vencimiento aplicando el descuento sobre el subtotal de productos.
 
 5. **Pago Seguro con Mercado Pago:**
    - El cliente abona con tarjeta de crédito, débito o dinero en cuenta.
    - Los datos bancarios nunca quedan expuestos ni se almacenan en nuestros servidores.
 
-6. **Cierre de Venta Automático:**
-   - Cuando el pago es aprobado, el sistema descuenta automáticamente las unidades del inventario, genera el comprobante de compra y muestra la confirmación en pantalla.
+6. **Cierre de Venta Automático y Trazabilidad de Stock:**
+   - Al concretarse la compra, el motor **PostgreSQL** registra el pedido, descuenta automáticamente las unidades de cada producto (incluyendo los sets que componen un combo) y deja constancia en el historial de movimientos de stock (`movimiento_stock`).
+   - Si un pago es rechazado o cancelado, la base de datos **repone automáticamente el stock** de los productos involucrados mediante un disparador (trigger) sin intervención manual.
 
 ---
 
 ## 🧩 3. Módulos Principales del Sistema
 
-### 📦 A. Gestión de Catálogo y Productos
-- **Fichas Completas:** Carga de nombres, descripciones enriquecidas, múltiples imágenes, precios y categorías.
-- **Sección de Ofertas y Combos:** Herramienta estratégica para armar paquetes de productos con descuento para elevar el ticket promedio de compra.
-- **Sistema de Reseñas y Valoraciones:** Permite a los clientes calificar con estrellas y dejar testimonios, mejorando la conversión y confianza de futuros clientes.
+### 📦 A. Gestión de Catálogo, Edades, Sagas y Combos
+- **Fichas Completas:** Carga de nombres, descripciones, imágenes, precios, categoría temática, rango de edad (`edad`) y saga/película (`pelicula`).
+- **Combos con Precio Cerrado:** Desde el Panel Admin se arman paquetes combinando varios sets a un precio promocional fijo. El stock de cada producto se descuenta recién cuando el cliente concreta la compra del combo.
+- **Alertas de Inventario Crítico:** Vista dedicada en PostgreSQL (`vista_inventario_critico`) que identifica automáticamente productos agotados o con stock bajo (≤ 3 unidades).
+- **Sistema de Reseñas Verificadas:** La propia base de datos valida que únicamente usuarios que hayan comprado previamente un producto puedan calificarlo y dejar una reseña.
 
 ### 💳 B. Pasarela de Pagos (Mercado Pago)
 - Procesamiento en Pesos Argentinos (**ARS**).

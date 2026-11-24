@@ -1,6 +1,6 @@
 # 🏗️ Arquitectura Técnica y Funcionamiento Modular del E-Commerce
-> **Documento:** Especificación Técnica de Arquitectura, Módulos, Conectividad y Flujos de Datos  
-> **Stack Principal:** Python 3.10+ / Django 4.2 / Django REST Framework (Backend) + React 18 / Vite / TailwindCSS / GSAP (Frontend)
+> **Documento:** Especificación Técnica de Arquitectura, Módulos, Base de Datos PostgreSQL y Flujos de Datos  
+> **Stack Principal:** Python 3.12 / Django 4.2 / Django REST Framework / **PostgreSQL 18 (`bloque_mundo`)** + React 18 / Vite / TailwindCSS / GSAP (Frontend)
 
 ---
 
@@ -47,15 +47,17 @@ flowchart TB
         CorreoArg_Engine["Motor de Zonas Correo Argentino"]
     end
 
-    subgraph Database["🗄️ Base de Datos Relacional (SQLite / PostgreSQL / MySQL)"]
-        Tables[(Tablas Relacionales & Constraints)]
+    subgraph Database["🗄️ Base de Datos PostgreSQL 18 (bloque_mundo)"]
+        Tables[(15 Tablas de Dominio + Auxiliares)]
+        Triggers["7 Triggers + 2 Vistas + 3 Funciones + 4 SPs PL/pgSQL"]
+        Tables --- Triggers
     end
 
     AxiosClient <-->|"HTTP / JSON (REST)"| Router
     Router --> Backend_Modules
     ModPagos <-->|"SDK / REST / Webhook"| MP_API
-    ModEnvios <-->|"Cotización CP"| CorreoArg_Engine
-    Backend_Modules <-->|"ORM Django"| Database
+    ModEnvios <-->|"calcular_costo_envio() + Zonas"| CorreoArg_Engine
+    Backend_Modules <-->|"ORM Django (managed=False) + SQL/SPs"| Database
 ```
 
 ---
@@ -64,107 +66,86 @@ flowchart TB
 
 A continuación se detalla la responsabilidad técnica de cada aplicación, sus modelos principales y sus interconexiones:
 
-### 👤 2.1. `usuarios` (Autenticación y Perfiles)
+### 👤 2.1. `usuarios` (Autenticación y Perfiles → tabla `usuario`)
 * **Responsabilidad:** Gestiona la creación de cuentas, inicio de sesión, autorización y datos de perfil extendidos.
-* **Modelo Principal:** `Usuario` (hereda de `AbstractUser` de Django):
-  * Atributos extra: `direccion`, `telefono`, `ciudad`, `comuna`, `codigo_postal`, `fecha_nacimiento`.
+* **Modelo Principal:** `Usuario` (`db_table = 'usuario'`, `managed = False`, hereda de `AbstractBaseUser` y `PermissionsMixin`):
+  * Mapeo 1:1 con columnas SQL: `id_usuario`, `nombre`, `apellido`, `correo` (con `CHECK` regex), `direccion`, `codigo_postal`, `es_admin`, más columnas técnicas de autenticación (`username`, `password`, `is_active`, `is_superuser`, `last_login`, `date_joined`).
 * **Seguridad:** Usa **SimpleJWT** (`/api/login/` y `/api/token/refresh/`) emitiendo tokens con firma criptográfica.
-* **Conexión con otros módulos:**
-  * `Orden.usuario`: Relación 1 a N (un usuario puede tener muchas órdenes).
-  * `Carrito.usuario` y `Deseo.usuario`: Relación 1 a N con unicidad por producto.
-  * `Pago.usuario`: Trazabilidad de pagos realizados.
 
 ---
 
-### 🏷️ 2.2. `categorias` y `productos` (Catálogo e Inventario)
-* **Responsabilidad:** Administración del catálogo, control de stock disponible y categorización.
+### 🏷️ 2.2. `categorias` y `productos` (Catálogo e Inventario → tablas `categoria`, `edad`, `pelicula`, `producto`, `movimiento_stock`)
+* **Responsabilidad:** Administración del catálogo, control de stock con auditoría y clasificación por categoría, rango etario y saga/película.
 * **Modelos:**
-  * `Categoria`: `nombre`, `slug`, `descripcion`.
-  * `Producto`:
-    * `nombre`, `descripcion`, `precio` (`DecimalField`).
-    * `categorias`: Relación `ManyToManyField` con `Categoria`.
-    * `stock` (`PositiveIntegerField`): Control numérico estricto de inventario.
-    * `activo` (`BooleanField`), `destacado` (`BooleanField`), `imagen` (`ImageField`).
+  * `Categoria` (`db_table = 'categoria'`): `id_categoria`, `nombre_categoria`, `descripcion`, `activo`.
+  * `Edad` (`db_table = 'edad'`): 5 rangos etarios (`0 - 3 años`, `4 - 6 años`, `7 - 11 años`, `12 - 17 años`, `18+ Adultos`).
+  * `Pelicula` (`db_table = 'pelicula'`): 18 sagas/franquicias (`Star Wars`, `Harry Potter`, `Marvel`, `Technic`, etc.).
+  * `Producto` (`db_table = 'producto'`): `id_producto`, `nombre_producto`, `descripcion`, `precio` (`CHECK > 0`), `stock` (`CHECK >= 0`), `destacado`, FKs `id_categoria`, `id_edad`, `id_pelicula`, `imagen`, `activo`, `creado`.
+  * `MovimientoStock` (`db_table = 'movimiento_stock'`): auditoría inmutable con ENUM `tipo_movimiento_enum` (`INGRESO`, `INGRESO_ADMIN`, `VENTA`, `DEVOLUCION_CANCELACION`, `AJUSTE`).
 * **Endpoints Clave:**
-  * `GET /api/productos/`: Listado público con soporte para filtros de búsqueda y categoría.
-  * `POST / PUT / DELETE /api/productos/`: Restringido a usuarios `IsAdminUser` / Staff.
-* **Conexión con otros módulos:**
-  * Consumido por `carrito`, `deseos`, `ofertas` y `ordenes.OrdenProducto`.
+  * `GET /api/productos/`: Listado público con filtros por `saga`, `pelicula`, `edad`, `categorias__nombre`, `precio_min`, `precio_max`, `en_stock`, `destacado` y búsqueda.
+  * `GET /api/productos/inventario_critico/`: Lee directamente la vista PostgreSQL `vista_inventario_critico`.
+  * `GET /api/productos/filtrar_sp/`: Invoca la función PostgreSQL `filtrar_productos(id_categoria, id_edad, id_pelicula)`.
+  * `POST /api/productos/{id}/reponer_stock/` y `destacar/`: Invocan `CALL pr_gestion_stock(...)` y `CALL pr_destacar_producto(...)`.
 
 ---
 
-### 🛒 2.3. `carrito` y `deseos` (Persistencia de Intención de Compra)
-* **Responsabilidad:** Almacenamiento temporal y persistente de productos preseleccionados antes de pagar.
-* **Modelo `Carrito`:**
-  * Campos: `usuario` (opcional), `session_key` (para invitados), `producto` (`ForeignKey`), `cantidad` (`PositiveIntegerField`).
-  * **Restricción de Base de Datos (`UniqueConstraint`):** Evita registros duplicados; si un producto ya existe en el carrito del usuario o sesión, actualiza la cantidad en lugar de duplicar la fila.
-* **Modelo `Deseo`:** Almacena la lista de deseos (*Wishlist*) vinculada al usuario o sesión.
-* **Flujo de Vaciado:** Al confirmarse el pago de una orden, el carrito correspondiente se purga automáticamente.
+### 🛒 2.3. `carrito` y `deseos` (Persistencia Anti-Fantasma → tablas `carrito`, `linea_carrito`, `deseos_deseo`)
+* **Responsabilidad:** Almacenamiento de productos preseleccionados antes de pagar sin bloquear stock del inventario.
+* **Estructura en PostgreSQL:**
+  * `carrito` (`id_carrito`, `id_usuario` único 1:1 o `session_key` para invitados, `total`).
+  * `linea_carrito` con clave primaria compuesta `(id_carrito, id_producto)`, `cantidad` y `subtotal`.
+  * **Trigger 5 (`trg_actualizar_total_carrito`):** Recalcula automáticamente `carrito.total` ante cada `INSERT`, `UPDATE` o `DELETE` en `linea_carrito`.
+  * **SP `pr_agregar_al_carrito`:** Valida stock disponible antes de insertar/actualizar `linea_carrito`.
+  * **Combos (`POST /api/carrito/agregar_combo/`):** Prorratea el precio exacto del combo entre sus productos en `linea_carrito.subtotal` para mantener el precio cerrado del combo y que al comprar se descuente el stock de cada set incluido.
+  * **Sanitización Anti-Fantasma:** Cada consulta a `/api/carrito/` o `/api/carrito/resumen/` depura automáticamente ítems inactivos o sin stock y ajusta cantidades al stock real.
 
 ---
 
-### 🎟️ 2.4. `cupones` y `ofertas` (Motor Promocional)
-* **Responsabilidad:** Aplicación de reglas comerciales y descuentos porcentuales sobre el subtotal.
-* **Modelo `Cupon`:**
-  * `codigo` (único, ej. `PROMO10`).
-  * `porcentaje_descuento`, `activo` (`BooleanField`).
-  * `fecha_inicio`, `fecha_fin` (`DateTimeField`).
-  * `usos_maximos` y `usos_actuales` (contador atómico de redenciones).
-  * Métodos de negocio: `is_valid()` y `usar()`.
-* **Modelo `Oferta`:** Descuentos aplicados por período directo a productos o combos.
+### 🎟️ 2.4. `cupones` y `ofertas` (Motor Promocional → tablas `cupon`, `promocion`, `ofertas_combo`, `ofertas_comboproducto`)
+* **Responsabilidad:** Cupones de descuento, promociones temporales por producto y combos armados desde el Panel Admin.
+* **Modelo `Cupon` (`db_table = 'cupon'`):** `id_cupon`, `codigo`, `porcentaje` (`CHECK 0 < p <= 100`), `usado`, `fecha_vencimiento`.
+* **Modelo `Oferta` (`db_table = 'promocion'`):** `id_promo`, `id_producto`, `descripcion_promo`, `fecha_inicio`, `fecha_fin` (`CHECK fecha_fin > fecha_inicio`), `porcentaje_descuento`, `activo`.
+* **Modelos `Combo` y `ComboProducto`:** Agrupan múltiples productos a un precio especial; el descuento de stock de los productos incluidos ocurre al concretar la compra (no al crear el combo).
 
 ---
 
-### 🚚 2.5. `envios` (Motor de Cotización y Zonas)
-* **Responsabilidad:** Cálculo dinámico de costos de flete por Código Postal hacia todo el país.
-* **Lógica (`correo_argentino.py`):**
-  * Origen de despacho: **CP 3260** (Concepción del Uruguay, Entre Ríos).
-  * Resolución por zonas geográficas (Local, Provincial, Regional, Nacional 1, Nacional 2).
-  * Modalidades calculadas: `Envío a Domicilio`, `Retiro en Sucursal`, `Retiro en Tienda` ($0).
-  * Validación de regla de **Envío Gratis**: Compara el `subtotal` del carrito contra `ConfiguracionEnvio.monto_envio_gratis` (por defecto $50.000 ARS).
-* **Endpoint:** `POST /api/envios/cotizar-envio/` (abierto a invitados y registrados).
+### 🚚 2.5. `envios` (Motor de Cotización y Zonas → tabla `envio`)
+* **Responsabilidad:** Cálculo dinámico de costos de flete por Código Postal integrando la función PostgreSQL `calcular_costo_envio(cp)` con las zonas de Correo Argentino.
+* **Lógica (`envios/views.py` + `correo_argentino.py`):**
+  * Ejecuta `SELECT calcular_costo_envio(cp)` en PostgreSQL (`$3.500` base + recargo por zona).
+  * Devuelve las 3 modalidades (`Envío a Domicilio`, `Retiro en Sucursal`, `Retiro en Tienda` `$0`) y aplica **Envío Gratis** cuando el subtotal supera `ConfiguracionEnvio.monto_envio_gratis` (`$50.000`).
+* **Endpoint:** `POST / GET /api/envios/cotizar/`.
 
 ---
 
-### 📋 2.6. `ordenes` (Gestión del Ciclo de Vida del Pedido)
-* **Responsabilidad:** Registro inmutable del pedido, datos de entrega del comprador y desglose de ítems.
-* **Modelos:**
-  * `Orden`:
-    * Identificador de comprador: `usuario` (FK) o datos de invitado (`nombre_invitado`, `email_invitado`, `telefono_invitado`, `direccion_invitado`, `session_key`).
-    * Logística: `metodo_entrega`, `costo_envio`.
-    * Estados: `pendiente` ➔ `pagado` ➔ `procesando` ➔ `enviado` ➔ `entregado` ➔ `cancelado`.
-    * `total` (`DecimalField`): Subtotal de productos + costo de envío - descuentos.
-  * `OrdenProducto`: Snapshot histórico de cada ítem (`producto_id`, `nombre_producto`, `precio_producto`, `cantidad`, `subtotal`). Esto garantiza que si el precio del producto cambia en el futuro, el histórico de la orden permanece inalterado.
+### 📋 2.6. `ordenes` (Ciclo de Vida del Pedido → tablas `compra`, `linea_compra`)
+* **Responsabilidad:** Registro inmutable del pedido y ejecución de la lógica transaccional de compra en PostgreSQL.
+* **Flujo transaccional (`POST /api/ordenes/ordenes/crear_orden_usuario/`):**
+  * Invoca `CALL pr_concretar_compra(p_id_usuario, p_direccion_envio, p_codigo_cupon)` en PostgreSQL:
+    1. Valida stock de cada ítem en `linea_carrito`.
+    2. Valida y marca el cupón como usado si corresponde.
+    3. Calcula envío con `calcular_costo_envio()`.
+    4. Inserta en `compra`, `linea_compra` (**Trigger 2** → inserta `VENTA` en `movimiento_stock` → **Trigger 1** descuenta `producto.stock`), `pago` (**Trigger 6** valida `monto <= compra.total`) y `envio`, y limpia `linea_carrito`.
+* **Reportes e Historial:**
+  * `GET /api/ordenes/ordenes/historial_sp/`: Invoca la función `historial_compras_usuario(id_usuario)`.
+  * `GET /api/ordenes/ordenes/reporte_ventas/`: Integra métricas y la vista PostgreSQL `vista_reporte_ventas`.
 
 ---
 
-### 💳 2.7. `pagos` (Integración Mercado Pago SDK y Webhooks)
-* **Responsabilidad:** Crear preferencias de Checkout Pro, validar notificaciones de pago y garantizar la consistencia del stock.
-* **Modelo `Pago`:**
-  * `orden` (`ForeignKey`), `usuario` (`ForeignKey`), `monto`, `estado` (`pendiente`, `completado`, `rechazado`).
-  * Identificadores de pasarela: `preference_id`, `payment_id`, `payment_method`, `payment_type`.
-* **Endpoints Clave:**
-  1. `POST /api/pagos/crear-preferencia/`: Genera el `preference_id` y el `init_point` de Mercado Pago con los ítems, costo de envío, comprador y URLs de retorno (`back_urls`).
-  2. `POST /api/pagos/webhook/`: Receptor de notificaciones IPN/Webhook de Mercado Pago en segundo plano.
-  3. `POST /api/pagos/confirmar-retorno/`: Sincronización inmediata cuando el cliente regresa a la URL de éxito (`/pago/exitoso`), verificando con el SDK el estado real de la transacción.
-* **Lógica Atómica de Stock:**
-  ```python
-  # Al verificarse 'approved':
-  if orden.estado != 'pagado':
-      for item in orden.productos.all():
-          prod = Producto.objects.get(id=item.producto_id)
-          prod.stock = max(0, prod.stock - item.cantidad)
-          prod.save()
-      orden.estado = 'pagado'
-      orden.save()
-  ```
+### 💳 2.7. `pagos` (Integración Mercado Pago SDK y Webhooks → tabla `pago`)
+* **Responsabilidad:** Crear preferencias de Checkout Pro, validar notificaciones de pago y sincronizar el estado en PostgreSQL (`estado_pago_enum`: `'PENDIENTE'`, `'APROBADO'`, `'CANCELADO'`).
+* **Triggers de Integridad:**
+  * **Trigger 3 (`trg_reponer_stock_por_cancelacion`):** Al actualizar `pago.estado_pago` a `'CANCELADO'`, inserta automáticamente `DEVOLUCION_CANCELACION` en `movimiento_stock` y repone el stock de todos los productos de la compra.
+  * **Trigger 4 (`trg_bloquear_edicion_linea_compra`):** Bloquea cualquier modificación o borrado en `linea_compra` una vez que el pago está `'APROBADO'`.
+  * **Trigger 6 (`trg_validar_pago_no_supera_total`):** Impide registrar un pago cuyo monto supere el total de la compra.
+* **Auto-Return Inteligente:** Envía `auto_return: "approved"` únicamente cuando `back_urls.success` es una URL pública HTTPS (producción o túnel HTTPS), evitando el error `invalid_auto_return` de Mercado Pago en `localhost`.
 
 ---
 
-### ⭐ 2.8. `reseñas`, `notificaciones` y `analitica`
-* **`reseñas`:** Permite a compradores verificados registrar `calificacion` (1 a 5 estrellas) y `comentario` asociados a un `Producto`.
-* **`notificaciones`:** Emisión de avisos en la plataforma sobre cambios de estado en pedidos.
-* **`analitica`:** Agregaciones sobre volumen de ventas, productos con mayor rotación e ingresos brutos por período.
+### ⭐ 2.8. `reseñas` (tabla `comentario`), `notificaciones` y `analitica`
+* **`reseñas` (`db_table = 'comentario'`):** Protegida por el **Trigger 7 (`trg_validar_comentario_compra_previa`)**, que valida directamente en PostgreSQL que el usuario haya comprado el producto antes de permitir el `INSERT`.
+* **`notificaciones` y `analitica`:** Plantillas de correo transaccional y registro de eventos de analítica.
 
 ---
 
@@ -237,15 +218,19 @@ El frontend utiliza la librería de alto rendimiento **GSAP (GreenSock Animation
 | :--- | :--- | :--- | :--- | :--- |
 | `POST` | `/api/login/` | `usuarios` | Público | Obtención de tokens JWT (`access` y `refresh`). |
 | `POST` | `/api/token/refresh/` | `usuarios` | Público | Renovación de `access_token` mediante `refresh_token`. |
-| `GET` | `/api/productos/` | `productos` | Público | Consulta de catálogo y filtros. |
+| `GET` | `/api/productos/` | `productos` | Público | Consulta de catálogo con filtros (`saga`, `edad`, `precio_min/max`, `en_stock`, `destacado`). |
+| `GET` | `/api/productos/inventario_critico/` | `productos` | Público | Consulta directa a la vista PostgreSQL `vista_inventario_critico`. |
+| `GET` | `/api/productos/filtrar_sp/` | `productos` | Público | Invoca la función PostgreSQL `filtrar_productos()`. |
 | `POST` | `/api/productos/` | `productos` | Admin / Staff | Alta de nuevo producto con imagen. |
-| `GET/POST`| `/api/carrito/` | `carrito` | Autenticado / Sesión | Consulta y adición de ítems al carrito. |
-| `POST` | `/api/envios/cotizar-envio/`| `envios` | Público | Cotización en tiempo real por Código Postal. |
+| `GET/POST`| `/api/carrito/` | `carrito` | Autenticado / Sesión | Consulta (sanitizada anti-fantasma) y adición vía `pr_agregar_al_carrito`. |
+| `POST` | `/api/carrito/agregar_combo/` | `carrito` | Autenticado / Sesión | Agrega los productos de un combo respetando su precio cerrado prorrateado. |
+| `POST/GET`| `/api/envios/cotizar/` | `envios` | Público | Cotización por CP usando `calcular_costo_envio()` de PostgreSQL + Correo Argentino. |
 | `POST` | `/api/cupones/validar/` | `cupones` | Público | Validación de vigencia y descuento de cupón. |
-| `POST` | `/api/ordenes/` | `ordenes` | Público / Usuario | Creación de orden preliminar con ítems y flete. |
-| `POST` | `/api/pagos/crear-preferencia/`| `pagos` | Público / Usuario | Creación de preferencia de cobro en Mercado Pago. |
-| `POST` | `/api/pagos/webhook/` | `pagos` | Público (MP) | Receptor de eventos IPN de Mercado Pago. |
-| `POST` | `/api/pagos/confirmar-retorno/`| `pagos` | Público | Sincronización de orden y descuento de stock tras retorno. |
+| `POST` | `/api/ordenes/ordenes/crear_orden_usuario/` | `ordenes` | Autenticado | Ejecuta `CALL pr_concretar_compra(...)` en PostgreSQL (dispara Triggers 1, 2, 5 y 6). |
+| `GET` | `/api/ordenes/ordenes/reporte_ventas/` | `ordenes` | Admin / Staff | Métricas de ventas + vista PostgreSQL `vista_reporte_ventas`. |
+| `POST` | `/api/pagos/pagos/crear-preferencia/` | `pagos` | Público / Usuario | Creación de preferencia de cobro en Mercado Pago. |
+| `POST` | `/api/pagos/pagos/webhook/` | `pagos` | Público (MP) | Receptor de eventos IPN de Mercado Pago (Trigger 3 repone stock al cancelar). |
+| `POST` | `/api/pagos/pagos/confirmar-retorno/` | `pagos` | Público | Sincronización de estado de pago (`APROBADO`/`CANCELADO`) tras retorno. |
 | `GET` | `/api/swagger/` | `core` | Público | Documentación interactiva Swagger / OpenAPI. |
 
 ---

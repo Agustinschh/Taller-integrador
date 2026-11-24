@@ -7,12 +7,12 @@
 Esta plataforma es una solución integral de **Comercio Electrónico (E-commerce)** diseñada bajo una arquitectura desacoplada (*Client-Server Architecture*). Cuenta con un backend robusto basado en **Django REST Framework** y una interfaz moderna de aplicación de página única (SPA) desarrollada en **React + Vite**.
 
 ### 🌟 Capacidades Clave
-* **Catálogo y Búsqueda Avanzada:** Categorías multinivel, productos destacados, ofertas con temporizador y filtros.
-* **Carrito y Lista de Deseos Híbrida:** Soporte tanto para usuarios autenticados como para invitados (*Guest mode*).
-* **Pasarela de Pagos (Mercado Pago):** Integración con Checkout Pro, soporte para moneda ARS, retorno automático y sincronización vía webhooks.
-* **Cotización de Envíos Dinámica:** Cálculo de tarifas por Código Postal con Correo Argentino, modalidades de retiro/domicilio y promociones de envío gratis.
-* **Notificaciones Transaccionales:** Envío automático de correos electrónicos en formato HTML para confirmación de órdenes, pagos y despachos.
-* **Panel de Control Administrativo (Dashboard):** Gestión integral de catálogo, precios, stock e imágenes directamente desde la interfaz web.
+* **Base de Datos PostgreSQL 18 (`bloque_mundo`):** 15 tablas de dominio con 7 triggers, 2 vistas (`vista_reporte_ventas`, `vista_inventario_critico`), 3 funciones y 4 stored procedures PL/pgSQL.
+* **Catálogo, Edades, Sagas y Combos:** Filtros por 5 rangos etarios, 18 sagas/películas, ofertas activas y combos con precio cerrado y descuento automático de stock de los sets incluidos al concretar la compra.
+* **Carrito Anti-Fantasma y Lista de Deseos:** Soporte para usuarios autenticados e invitados, sanitización automática de stock y sin bloqueo prematuro de inventario.
+* **Pasarela de Pagos (Mercado Pago):** Integración con Checkout Pro (ARS), auto-retorno inteligente para URLs HTTPS, webhooks y reposición automática de stock en cancelaciones mediante trigger.
+* **Cotización de Envíos Dinámica:** Cálculo por Código Postal integrando la función PostgreSQL `calcular_costo_envio(cp)` con Correo Argentino y regla de envío gratis sobre $50.000 ARS.
+* **Panel de Control Administrativo (Dashboard):** Gestión de productos, combos y reportes de ventas desde `/admin/productos`.
 
 ---
 
@@ -24,10 +24,10 @@ graph TD
     Frontend -->|JWT Bearer Token / JSON| Backend[Backend API - Django REST Framework]
     
     subgraph Backend Services
-        Backend --> DB[(Base de Datos SQLite / PostgreSQL)]
+        Backend --> DB[(PostgreSQL 18 - bloque_mundo)]
         Backend --> MP[Mercado Pago SDK]
         Backend --> SMTP[Servicio de Email SMTP]
-        Backend --> Shipping[Motor de Envíos Correo Argentino]
+        Backend --> Shipping[Motor de Envíos + calcular_costo_envio]
     end
     
     MP -->|Webhook / IPN| Backend
@@ -193,6 +193,13 @@ npm run dev
 SECRET_KEY=tu_clave_secreta_aqui
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Base de Datos PostgreSQL 18
+DB_NAME=bloque_mundo
+DB_USER=postgres
+DB_PASSWORD=tu_password_postgres
+DB_HOST=127.0.0.1
+DB_PORT=5432
 
 # Pasarela de Pagos (Mercado Pago)
 MERCADOPAGO_PUBLIC_KEY=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx

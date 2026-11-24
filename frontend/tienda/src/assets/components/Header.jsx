@@ -301,7 +301,7 @@ export function Header({ onSearchResults }) {
   return (
     <header 
       ref={headerRef} 
-      className="sticky top-0 z-50 bg-white border-b shadow relative"
+      className="sticky top-0 z-50 bg-white border-b shadow overflow-x-clip"
       onMouseMove={handleHeaderMouseMove}
       onMouseEnter={handleHeaderMouseEnter}
       onMouseLeave={handleHeaderMouseLeave}
@@ -317,19 +317,19 @@ export function Header({ onSearchResults }) {
         }}
       />
       
-      <div className="display py-2 px-4 text-center font-bold relative z-10" style={{ background: 'var(--color-life-principal)', color: 'var(--color-life-background)' }}>
+      <div className="display py-2 px-3 sm:px-4 text-center text-xs sm:text-sm font-bold relative z-10" style={{ background: 'var(--color-life-principal)', color: 'var(--color-life-background)' }}>
         <p> Envío gratis en compras sobre $50.000 </p>
       </div>
 
       
-      <div className="max-w-7xl mx-auto px-2 sm:px-4">
-        <div className="flex items-center justify-between h-14 sm:h-26 gap-2 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 relative z-10">
+        <div className="flex items-center justify-between h-16 sm:h-20 lg:h-24 gap-2 sm:gap-4">
       
-          <div className="flex items-center flex-shrink-0 pl-0 sm:pl-8">
+          <div className="flex items-center flex-shrink-0 pl-0 sm:pl-4 lg:pl-8">
             <img 
               src={logo} 
               alt="Bloque Mundo" 
-              className="h-16 md:h-18 lg:h-20 w-auto object-contain cursor-pointer" 
+              className="h-11 sm:h-14 md:h-16 lg:h-20 w-auto max-w-[155px] sm:max-w-none object-contain cursor-pointer block" 
               onClick={handleLogoClick}
             />
           </div>
