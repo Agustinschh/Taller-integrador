@@ -133,7 +133,6 @@ CORREO_ARGENTINO_CP_ORIGEN=3260
 
 
 
-zorrita, para probarlo tenes que ejecutar todo esto: 
 
 **para levantar el backend**
   cd backend/ecommerce
